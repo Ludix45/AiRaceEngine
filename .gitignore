@@ -1,0 +1,24 @@
+# .NET build output
+bin/
+obj/
+publish/
+artifacts/
+.vs/
+
+# User-specific settings, telemetry, voice models and logs
+*.user
+*.suo
+*.dmp
+*.csv
+.env
+appsettings.local.json
+settings.json
+corner-coach.json
+Sessions/
+Models/
+Whisper/
+__pycache__/
+*.py[cod]
+
+# Local archives and packages
+*.zip

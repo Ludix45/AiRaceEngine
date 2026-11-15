@@ -1,0 +1,110 @@
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.IO;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
+namespace AiRaceEngineer;
+
+public sealed class OllamaClient
+{
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(15) };
+
+    public async Task<IReadOnlyList<string>> GetModelsAsync(string baseUrl, CancellationToken ct = default)
+    {
+        using var response = await Http.GetAsync($"{Normalize(baseUrl)}/api/tags", ct);
+        response.EnsureSuccessStatusCode();
+        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        return json.RootElement.GetProperty("models").EnumerateArray()
+            .Select(x => x.GetProperty("name").GetString() ?? "").Where(x => x.Length > 0).ToArray();
+    }
+
+    public async Task<string> AskAsync(string baseUrl, string model, string question, TelemetrySnapshot telemetry, CancellationToken ct = default)
+    {
+        var system = "Sei l'ingegnere di gara locale dell'utente in Assetto Corsa. Rispondi in italiano e in modo conciso. Leggi la telemetria come dati strutturati: valori diversi da zero sono letture, campi zero possono significare dato assente. Non trasformare indice gomme o danni grezzi in percentuali se il contesto non lo dichiara. Per i rivali usa solo FieldCars e distingui le stime di distanza dai distacchi ufficiali. Se il dato richiesto non è presente, dillo chiaramente. Non inventare meteo, bandiere, penalità, nomi, danni o punti di frenata. Per consigli in curva usa la velocità, frenata, gas, marcia e riferimento imparato forniti; se manca un giro di riferimento, dichiaralo. /no_think";
+        var field = telemetry.FieldCars ?? [];
+        var context = new
+        {
+            Telemetria = new
+            {
+                telemetry.Connected, telemetry.Car, telemetry.Track, telemetry.Session,
+                telemetry.CompletedLaps, telemetry.NumberOfLaps, telemetry.Position,
+                telemetry.SpeedKmh, telemetry.Gear, telemetry.Rpm, telemetry.FuelLitres,
+                telemetry.FuelPerLap, telemetry.TyreCompound, telemetry.TyreWearPercent,
+                telemetry.WearPerLapPercent, telemetry.TyreTempC, telemetry.TyreWearWheels,
+                telemetry.TyreWearEstimateWheels, telemetry.TyrePressure, telemetry.TyreCoreTempWheels,
+                telemetry.TyreInnerTemp, telemetry.TyreMidTemp, telemetry.TyreOuterTemp,
+                telemetry.BrakeTemp, telemetry.CarDamage, telemetry.Gas, telemetry.Brake,
+                telemetry.SteeringAngle, telemetry.AccG, telemetry.AirTempC, telemetry.RoadTempC,
+                telemetry.SurfaceGrip, telemetry.FlagText, telemetry.PenaltyTime, telemetry.InPitLane,
+                telemetry.InPit, telemetry.MandatoryPitDone, telemetry.PitWindowStart, telemetry.PitWindowEnd,
+                telemetry.NormalizedCarPosition, telemetry.TrackLengthMeters
+            },
+            Campo = field.Select(c => new
+            {
+                c.Driver, c.Car, c.Position, c.Laps, c.Spline, c.SpeedMs, c.BestLapMs, c.LastLapMs,
+                PitLane = (c.Flags & 2) != 0, Ai = (c.Flags & 32) != 0
+            }).OrderBy(c => c.Position).ToArray()
+        };
+        var payload = new
+        {
+            model,
+            stream = false,
+            think = false,
+            messages = new[]
+            {
+                new { role = "system", content = system },
+                new { role = "user", content = $"STATO TELEMETRICO STRUTTURATO (AC): {JsonSerializer.Serialize(context)}\n\nRICHIESTA: {question}" }
+            },
+            options = new { temperature = 0.25, num_ctx = 4096, num_predict = 128 }
+        };
+        using var response = await Http.PostAsJsonAsync($"{Normalize(baseUrl)}/api/chat", payload, ct);
+        response.EnsureSuccessStatusCode();
+        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        var answer = json.RootElement.GetProperty("message").GetProperty("content").GetString() ?? "Nessuna risposta.";
+        return Regex.Replace(answer, "<think>[\\s\\S]*?</think>", "", RegexOptions.IgnoreCase).Trim();
+    }
+
+    public async Task PullAsync(string baseUrl, string model, IProgress<string>? progress, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{Normalize(baseUrl)}/api/pull")
+        {
+            Content = JsonContent.Create(new { name = model, stream = true })
+        };
+        using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(stream);
+        string? line;
+        while (!ct.IsCancellationRequested && (line = await reader.ReadLineAsync(ct)) is not null)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            try
+            {
+                using var json = JsonDocument.Parse(line);
+                var root = json.RootElement;
+                var status = root.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+                if (root.TryGetProperty("completed", out var done) && root.TryGetProperty("total", out var total) && total.GetInt64() > 0)
+                    status += $" ({100d * done.GetInt64() / total.GetInt64():0}%)";
+                if (root.TryGetProperty("error", out var error)) throw new InvalidOperationException(error.GetString());
+                progress?.Report(status);
+            }
+            catch (JsonException) { }
+        }
+    }
+
+    public async Task<string> GetHealthAsync(string baseUrl, string model, CancellationToken ct = default)
+    {
+        try
+        {
+            var models = await GetModelsAsync(baseUrl, ct);
+            return models.Contains(model, StringComparer.OrdinalIgnoreCase) ? $"Ollama pronto · {model}" : $"Ollama connesso · {model} da scaricare";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return "Ollama non raggiungibile su localhost:11434";
+        }
+    }
+
+    private static string Normalize(string value) => value.Trim().TrimEnd('/');
+}

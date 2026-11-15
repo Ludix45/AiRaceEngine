@@ -1,0 +1,77 @@
+# AI Race Engineer
+
+Assistente Windows per Assetto Corsa: chat locale con Ollama, riconoscimento PTT italiano con Whisper e telemetria dal gioco. Non richiede AiMotor, chiavi API o crediti cloud.
+
+## Requisiti
+
+- Windows 10/11 x64.
+- Assetto Corsa per la telemetria di gioco e l’app Python in pista.
+- Ollama per le risposte generative; il modello è scaricabile dalle impostazioni dell’app.
+- Connessione Internet solo al primo avvio Whisper, per scaricare il modello vocale da circa 77 MB. In seguito la trascrizione è locale.
+- .NET 10 SDK solo se si compila dai sorgenti. Il pacchetto Release è autonomo.
+
+## Installazione del pacchetto Windows
+
+1. Scarica `AiRaceEngineer-win-x64.zip` dalla sezione **Releases** di GitHub ed estrailo in una cartella a scelta.
+2. Avvia `AiRaceEngineer.exe` e, in **Impostazioni**, verifica Ollama e scarica il modello conversazionale configurato.
+3. Installa il ponte telemetrico nell’installazione di Assetto Corsa:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\install-ac-bridge.ps1 -AssettoCorsaPath "D:\SteamLibrary\steamapps\common\assettocorsa"
+   ```
+
+   Esegui il comando dalla cartella della repository. Sostituisci il percorso con quello di Assetto Corsa sul PC. Lo script salva una copia di `python.ini`, attiva l’app senza cancellare le altre impostazioni e installa il file in `apps\python\AiRaceEngineer`.
+
+4. Riavvia Assetto Corsa, avvia una sessione e apri **AiRaceEngineer** dal selettore delle app in pista.
+5. Tieni Ollama avviato. Al primo uso PTT l’app scarica e verifica Whisper tiny. Il file vocale viene conservato in `%OLLAMA_MODELS%\AiRaceEngineer\Whisper`; senza la variabile, usa `Documenti\AiRaceEngineer\Models\AiRaceEngineer\Whisper`. I modelli conversazionali di Ollama restano nella cartella configurata in Ollama.
+
+## Build da sorgente
+
+```powershell
+dotnet publish .\AiRaceEngineer.csproj -c Release -r win-x64 --self-contained true -o .\publish\win-x64
+```
+
+Oppure avvia `scripts\build.ps1`. L’output include l’app Python AC in `ac_bridge\AiRaceEngineer.py`.
+
+GitHub Actions compila automaticamente Windows x64 a ogni push su `main` e allega il pacchetto alle Release create con un tag `v*`.
+
+Per pubblicare una versione: `git tag v0.1.0` e `git push origin main v0.1.0`. GitHub eseguirà la build e allegherà il pacchetto alla Release.
+
+## Funzioni incluse
+
+- Lettura dei blocchi Shared Memory di Assetto Corsa: dati fisici, giri, posizione, pit lane, penalità e bandiera corrente. Legge inoltre il campo completo (nomi, posizioni, giri, spline, velocità, pit, input e tempi) da una piccola app Python AC installata in `apps/python/AiRaceEngineer`.
+- Chat e riepilogo radio in italiano, con stato gara iniettato nel prompt del modello.
+- Avvisi locali per bandiere/penalità del gioco, ingresso e uscita box, consumo carburante, usura gomme e possibile incidente.
+- Stima carburante/usura e consiglio di pit stop.
+- Suggerimenti di assetto generici dal modello locale.
+- Registrazione CSV della telemetria in Documenti\AiRaceEngineer\Sessions.
+- Push-to-talk con F8 o pulsante Xbox Menu/Start su tutti gli slot XInput, con bip distinti alla pressione e al rilascio; l’audio viene acquisito dal microfono predefinito e trascritto in italiano da Whisper tiny in locale.
+- Coach curva che memorizza frenate e riaperture del gas dai giri completati e li richiama dal giro successivo con toni distinti. Il primo giro serve per imparare.
+- Selezione prioritaria della voce italiana Microsoft Elsa, se installata, con velocità leggermente ridotta.
+- Opzione finestra sempre in primo piano.
+- Pulsante per scaricare il modello configurato attraverso l’API locale Ollama.
+
+## Avvio
+
+Il coach curva salva i riferimenti in `Documenti\AiRaceEngineer\corner-coach.json`, distinti per auto e pista. Sono punti imparati dai giri guidati, non una mappa ufficiale o preimpostata.
+
+Il ponte legge nomi, posizioni, giri, tempi, velocità, spline, pit lane e input disponibili di ogni auto. La memoria standard AC non contiene il campo avversari. Le distanze tra rivali sono stime dalla progressione sul giro. La telemetria standard AC espone temperature aria/asfalto e grip, ma non una misura completa di pioggia/meteo o danno/usura delle auto avversarie.
+
+## Confini dei dati
+
+Il programma mostra lo stato bandiera che Assetto Corsa pubblica nella sua memoria condivisa. La memoria standard non espone tutti i dati dei rivali, meteo dettagliato, né comandi per imporre una Safety Car o una VSC: l’app non simula questi stati e non cambia le regole/overlay del gioco. Il rilevamento d’incidente è una stima basata su calo di velocità e danno.
+
+La pagina Set-up usa il modello come consulente generico; non contiene librerie proprietarie di assetti o strategie di altri prodotti. Il coach curva usa punti imparati dai giri locali e non sostituisce un database professionale di riferimenti.
+
+## Codice di terze parti
+
+Vendor/AssettoCorsaSharedMemory include la libreria di lettura AC di Mathias Djärv, con licenza MIT e copyright incluso. Il codice è stato integrato nel progetto per collegarsi ai formati Shared Memory pubblicati per Assetto Corsa.
+
+Riferimenti:
+- Assetto Corsa Shared Memory: https://labs.assettocorsa.jp/documents/reference/shared_memory
+- Libreria C# MIT: https://github.com/mdjarv/assettocorsasharedmemory
+- Ollama Windows e OLLAMA_MODELS: https://github.com/ollama/ollama/blob/main/docs/windows.mdx
+- Whisper.net: https://github.com/sandrohanea/whisper.net
+- Modello multilingue Whisper tiny: https://huggingface.co/ggerganov/whisper.cpp
+
+Il codice della libreria Shared Memory in `Vendor/AssettoCorsaSharedMemory` mantiene il file di licenza MIT e l’attribuzione dell’autore. Le altre dipendenze mantengono le rispettive licenze NuGet.
