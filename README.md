@@ -37,6 +37,16 @@ GitHub Actions compila automaticamente Windows x64 a ogni push su `main` e alleg
 
 Per pubblicare una versione: `git tag v0.1.0` e `git push origin main v0.1.0`. GitHub eseguirà la build e allegherà il pacchetto alla Release.
 
+### Pubblicazione manuale su GitHub
+
+L’autenticazione GitHub non è inclusa nella repository. Crea sul sito GitHub una repository privata vuota, senza aggiungere README o licenza, poi esegui dalla cartella della repository:
+
+```powershell
+.\scripts\publish-github.ps1 -Remote "https://github.com/OWNER/REPOSITORY.git"
+```
+
+Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo il primo push, i commit su `main` avviano la build automatica.
+
 ## Funzioni incluse
 
 - Lettura dei blocchi Shared Memory di Assetto Corsa: dati fisici, giri, posizione, pit lane, penalità e bandiera corrente. Legge inoltre il campo completo (nomi, posizioni, giri, spline, velocità, pit, input e tempi) da una piccola app Python AC installata in `apps/python/AiRaceEngineer`.
