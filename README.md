@@ -33,6 +33,18 @@ dotnet publish .\AiRaceEngineer.csproj -c Release -r win-x64 --self-contained tr
 
 Oppure avvia `scripts\build.ps1`. L’output include l’app Python AC in `ac_bridge\AiRaceEngineer.py`.
 
+La cartella del programma è `publish\win-x64`; avvialo con:
+
+```powershell
+.\publish\win-x64\AiRaceEngineer.exe
+```
+
+Da questa repository installa anche il ponte nel gioco con:
+
+```powershell
+.\scripts\install-ac-bridge.ps1 -AssettoCorsaPath "PERCORSO\assettocorsa"
+```
+
 GitHub Actions compila automaticamente Windows x64 a ogni push su `main` e allega il pacchetto alle Release create con un tag `v*`.
 
 Per pubblicare una versione: `git tag v0.1.0` e `git push origin main v0.1.0`. GitHub eseguirà la build e allegherà il pacchetto alla Release.
