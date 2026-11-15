@@ -6,8 +6,6 @@ namespace AiRaceEngineer;
 /// <summary>Answers telemetry fact queries directly, so a small language model cannot invent measurements.</summary>
 public static class RaceEngineerFacts
 {
-    private static readonly string[] Wheels = ["anteriore sinistra", "anteriore destra", "posteriore sinistra", "posteriore destra"];
-
     public static string? TryAnswer(string question, TelemetrySnapshot t)
     {
         var q = Normalize(question);
@@ -19,45 +17,54 @@ public static class RaceEngineerFacts
             return Rivals(t);
         if (ContainsAny(q, "benzina", "carburante", "rifornimento", "pit stop", "sosta", "box"))
             return Fuel(t);
+        if (ContainsAny(q, "in generale", "riepilogo", "come va", "come sto", "come sono messo", "situazione gara", "quadro generale", "cosa devo sapere"))
+            return Summary(t);
         return null;
     }
 
     private static string Damage(TelemetrySnapshot t)
     {
-        var damage = t.CarDamage ?? [];
-        if (damage.Length == 0) return "Assetto Corsa non ha fornito i valori dei danni in questa sessione.";
-        var values = string.Join(", ", damage.Select((v, i) => $"zona {i + 1}: {v.ToString("0.###", CultureInfo.CurrentCulture)}"));
-        return $"Danni riportati da Assetto Corsa (valori grezzi, 5 zone): {values}.";
+        var damage = (t.CarDamage ?? []).Take(4).Where(float.IsFinite).Select(v => Math.Max(0, v)).ToArray();
+        if (damage.Length == 0) return "Non riesco a valutare i danni in questo momento.";
+
+        // AC damage values are normalized on some versions/cars and expressed as percentages on others.
+        var scale = damage.Any(v => v > 1.01f) ? 1f : 100f;
+        var percent = damage.Select(v => v * scale).ToArray();
+        var affected = percent.Count(v => v >= 5f);
+        var max = percent.Max();
+        if (max < 5f) return "Non risultano danni rilevanti. Puoi continuare; se senti l’auto diversa, ricontrolliamo dopo un altro giro.";
+
+        var severity = max < 15f ? "lievi" : max < 40f ? "moderati" : "importanti";
+        var extent = affected == 1 ? "un’area" : $"{affected} aree";
+        var advice = max < 15f
+            ? "Puoi continuare, ma fai attenzione se l’auto inizia a tirare o vibrare."
+            : max < 40f
+                ? "Continua con prudenza; se l’auto tira, vibra o perde stabilità, rientra ai box per controllarla."
+                : "Rientra ai box appena puoi: il danno può compromettere stabilità e prestazioni.";
+        return $"Danni {severity}: coinvolta {extent}. {advice}";
     }
 
     private static string Tyres(TelemetrySnapshot t)
     {
-        if (t.TyreWearWheels is not { Length: > 0 }) return "Non riesco a leggere lo stato gomme dalla telemetria di questa sessione.";
-        var lines = new List<string>(4);
-        for (var i = 0; i < Math.Min(4, t.TyreWearWheels.Length); i++)
-        {
-            var health = t.TyreWearWheels[i];
-            var wear = At(t.TyreWearEstimateWheels, i);
-            var pressure = At(t.TyrePressure, i);
-            var core = At(t.TyreCoreTempWheels, i);
-            var inner = At(t.TyreInnerTemp, i);
-            var middle = At(t.TyreMidTemp, i);
-            var outer = At(t.TyreOuterTemp, i);
-            lines.Add($"{Wheels[i]}: indice AC {health:0.000}, usura stimata media {wear:0}%" +
-                (pressure > 0 ? $", {pressure:0.0} psi" : "") +
-                (core > 0 ? $", nucleo {core:0}°C, I/M/E {inner:0}/{middle:0}/{outer:0}°C" : ""));
-        }
-        return $"{t.TyreCompound}: {string.Join("; ", lines)}. L’indice AC indica grip/stato, non una percentuale diretta di gomma consumata; l’usura è una stima rispetto al picco osservato in questa sessione.";
+        if (t.TyreWearEstimateWheels is not { Length: > 0 }) return "Non riesco ancora a valutare l’usura delle gomme.";
+        var values = t.TyreWearEstimateWheels.Take(4).Where(float.IsFinite).ToArray();
+        if (values.Length == 0) return "Non riesco ancora a valutare l’usura delle gomme.";
+        var average = values.Average();
+        var highest = values.Max();
+        var advice = highest >= 70 ? "Le gomme sono molto consumate: programma una sosta appena possibile."
+            : highest >= 40 ? "L’usura comincia a essere significativa: tieni d’occhio il grip e pianifica la sosta."
+            : "Per ora puoi continuare; se perdi aderenza o i tempi peggiorano, valuta una sosta.";
+        return $"Gomme {t.TyreCompound}: usura stimata media {average:0}%, massimo {highest:0}%. {advice}";
     }
 
     private static string Rivals(TelemetrySnapshot t)
     {
         var cars = t.FieldCars;
         if (cars is null || cars.Count == 0)
-            return "Non ricevo ancora i dati delle altre auto. Avvia l’app Python AiRaceEngineer dalla barra delle app di Assetto Corsa; la memoria standard del gioco contiene solo la tua auto.";
+            return "Non vedo ancora i tuoi rivali. Riprova quando la classifica è aggiornata.";
 
         var player = cars.FirstOrDefault(x => x.Id == 0);
-        if (player is null) return "Il ponte Assetto Corsa è attivo, ma non ha pubblicato la tua auto nella classifica.";
+        if (player is null) return "Non riesco a leggere la tua posizione in classifica in questo momento.";
         var length = t.TrackLengthMeters > 0 ? t.TrackLengthMeters : 0;
         var candidates = cars.Where(x => x.Id != player.Id && (x.Flags & 1) != 0)
             .Select(x => (Car: x, Delta: ProgressDelta(x, player, length)))
@@ -65,31 +72,41 @@ public static class RaceEngineerFacts
             .OrderBy(x => Math.Abs(x.Delta)).ToArray();
 
         if (candidates.Length == 0)
-            return $"Sei in posizione {t.Position}; non ci sono altri rivali collegati al campo telemetrico.";
+            return $"Sei P{t.Position}; al momento non ho un rivale abbastanza vicino da segnalarti.";
 
         var ahead = candidates.FirstOrDefault(x => x.Delta > 0);
         var behind = candidates.FirstOrDefault(x => x.Delta < 0);
         var parts = new List<string>();
         if (ahead.Car is not null)
-            parts.Add(Describe(ahead.Car, ahead.Delta, "davanti", t.Position, t.TrackLengthMeters));
+            parts.Add(Describe(ahead.Car, ahead.Delta, "davanti", t.TrackLengthMeters, t.BestLapTimeSeconds));
         if (behind.Car is not null)
-            parts.Add(Describe(behind.Car, behind.Delta, "dietro", t.Position, t.TrackLengthMeters));
+            parts.Add(Describe(behind.Car, behind.Delta, "dietro", t.TrackLengthMeters, t.BestLapTimeSeconds));
         if (parts.Count == 0)
-            return $"Classifica rilevata, ma non riesco a stabilire il distacco in pista. Posizione AC: {t.Position}.";
-        return $"Posizione {t.Position}. {string.Join(" ", parts)} Distanze e tempi sono stime dalla posizione lungo il tracciato.";
+            return $"Sei P{t.Position}; non riesco a stimare il distacco in questo momento.";
+        return $"Sei P{t.Position}. {string.Join(" ", parts)}";
     }
 
-    private static string Describe(FieldCar car, float delta, string direction, int playerPosition, float trackLength)
+    private static string Describe(FieldCar car, float delta, string direction, float trackLength, float playerBestLapSeconds)
     {
         var name = string.IsNullOrWhiteSpace(car.Driver) ? car.Car : car.Driver;
         var distance = Math.Abs(delta);
-        var speed = Math.Max(1, car.SpeedMs);
-        var seconds = distance / speed;
+        var lapSeconds = ValidLapSeconds(car.BestLapMs) ?? ValidLapSeconds(car.LastLapMs)
+            ?? (playerBestLapSeconds is >= 10 and <= 900 ? playerBestLapSeconds : null);
+        var secondsText = lapSeconds is { } paceSeconds && trackLength > 0
+            ? $" (circa {distance / trackLength * paceSeconds:0.0} s)"
+            : "";
         var pos = car.Position > 0 ? $" in P{car.Position}" : "";
         var pit = (car.Flags & 2) != 0 ? ", in pit lane" : "";
         var lap = trackLength > 0 && distance >= trackLength ? $", {distance / trackLength:0.#} giri" : "";
-        return $"{name}{pos} è {direction} a circa {distance:0} m ({seconds:0.0} s stimati{lap}){pit}.";
+        var tip = distance <= 15 && direction == "davanti"
+            ? " Sei in scia: prova a preparare una buona uscita dalla curva per attaccare."
+            : distance <= 15 && direction == "dietro"
+                ? " È vicino: cura l’uscita dalle curve e difendi la traiettoria."
+                : "";
+        return $"{name}{pos} è {direction} di circa {distance:0} m{secondsText}{lap}{pit}.{tip}";
     }
+
+    private static float? ValidLapSeconds(int ms) => ms is >= 10000 and <= 900000 ? ms / 1000f : null;
 
     private static float ProgressDelta(FieldCar car, FieldCar player, float length)
     {
@@ -108,16 +125,64 @@ public static class RaceEngineerFacts
         if (!t.Connected) return "La telemetria di Assetto Corsa non è collegata.";
         var lapsLeft = t.NumberOfLaps > 0 ? Math.Max(0, t.NumberOfLaps - t.CompletedLaps) : 0;
         var use = t.FuelPerLap;
-        if (use <= 0) return $"Hai {t.FuelLitres:0.0} L. Sto ancora misurando il consumo: completa un giro per stimare carburante e sosta.";
+        if (use <= 0) return "Ho bisogno di un giro completo per stimare l’autonomia del carburante.";
         var estimatedLaps = t.FuelLitres / use;
-        var result = $"Hai {t.FuelLitres:0.0} L; consumo medio {use:0.00} L/giro, autonomia stimata {estimatedLaps:0.0} giri";
-        if (lapsLeft > 0) result += $", ne restano {lapsLeft}";
+        var result = $"Carburante: {estimatedLaps:0.0} giri di autonomia stimata";
+        if (lapsLeft > 0)
+        {
+            var margin = estimatedLaps - lapsLeft;
+            result += $", te ne restano {lapsLeft}";
+            result += margin < 0 ? $": mancano circa {Math.Abs(margin):0.0} giri di carburante. Valuta il box o riduci il consumo."
+                : margin < 1 ? ": margine ridotto, risparmia carburante e pianifica il box."
+                : $", margine di circa {margin:0.0} giri.";
+        }
         if (t.PitWindowStart > 0 || t.PitWindowEnd > 0)
-            result += $". Finestra pit AC: giri {t.PitWindowStart}–{t.PitWindowEnd}; sosta obbligatoria {(t.MandatoryPitDone != 0 ? "completata" : "non segnata come completata")}";
+            result += $". Finestra pit: giri {t.PitWindowStart}–{t.PitWindowEnd}; sosta obbligatoria {(t.MandatoryPitDone != 0 ? "completata" : "ancora da fare")}";
         return result + ".";
     }
 
-    private static float At(float[]? values, int index) => values is not null && index < values.Length ? values[index] : 0;
+    private static string Summary(TelemetrySnapshot t)
+    {
+        if (!t.Connected) return "Non ho ancora i dati della sessione. Avvia Assetto Corsa e torna in pista, poi chiedimi di nuovo il riepilogo.";
+        var parts = new List<string>();
+        if (t.Position > 0)
+        {
+            var rivalText = Rivals(t);
+            parts.Add(rivalText.StartsWith("Sei P", StringComparison.Ordinal) ? rivalText : $"Sei P{t.Position}.");
+        }
+
+        if (t.TyreWearEstimateWheels is { Length: > 0 })
+        {
+            var wear = t.TyreWearEstimateWheels.Where(float.IsFinite).ToArray();
+            if (wear.Length > 0)
+            {
+                var average = wear.Average();
+                var tyreAdvice = average >= 70 ? "valuta il pit stop" : average >= 40 ? "inizia a pianificare il pit stop" : "gomme ancora gestibili";
+                parts.Add($"Gomme: usura stimata {average:0}%, {tyreAdvice}.");
+            }
+        }
+
+        if (t.FuelPerLap > 0)
+        {
+            var laps = t.FuelLitres / t.FuelPerLap;
+            var remaining = t.NumberOfLaps > 0 ? Math.Max(0, t.NumberOfLaps - t.CompletedLaps) : 0;
+            parts.Add(remaining > 0 && laps < remaining
+                ? $"Carburante: autonomia per {laps:0.0} giri, inferiore ai {remaining} rimanenti; risparmia o rientra ai box."
+                : $"Carburante: circa {laps:0.0} giri di autonomia.");
+        }
+
+        if (t.PenaltyTime > 0.1f) parts.Add($"Hai una penalità di {t.PenaltyTime:0.#} secondi: scontala secondo le regole della sessione.");
+        if (!string.Equals(t.FlagText, "NESSUNA", StringComparison.OrdinalIgnoreCase)) parts.Add($"Attenzione: bandiera {t.FlagText.ToLowerInvariant()}.");
+        if (t.LastLapTimeSeconds > 0 && t.BestLapTimeSeconds > 0)
+        {
+            var delta = t.LastLapTimeSeconds - t.BestLapTimeSeconds;
+            if (delta > Math.Max(1.5f, t.BestLapTimeSeconds * 0.025f))
+                parts.Add($"L’ultimo giro è {delta:0.0} s più lento del tuo migliore: controlla errori o usura gomme.");
+        }
+        if (parts.Count == 0) return "Sei in pista, ma per ora non ho abbastanza dati per un consiglio utile. Fai un giro e richiedi un nuovo riepilogo.";
+        return string.Join(" ", parts);
+    }
+
     private static bool ContainsAny(string value, params string[] terms) => terms.Any(value.Contains);
     private static string Normalize(string value)
     {

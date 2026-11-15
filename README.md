@@ -62,7 +62,7 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 ## Funzioni incluse
 
 - Lettura dei blocchi Shared Memory di Assetto Corsa: dati fisici, giri, posizione, pit lane, penalità e bandiera corrente. Legge inoltre il campo completo (nomi, posizioni, giri, spline, velocità, pit, input e tempi) da una piccola app Python AC installata in `apps/python/AiRaceEngineer`.
-- Chat e riepilogo radio in italiano, con stato gara iniettato nel prompt del modello.
+- Risposte radio in italiano con valutazioni leggibili di danni, gomme, carburante e distacchi; il riepilogo gara mette in evidenza anche penalità, bandiere e cali di ritmo quando disponibili.
 - Avvisi locali per bandiere/penalità del gioco, ingresso e uscita box, consumo carburante, usura gomme e possibile incidente.
 - Stima carburante/usura e consiglio di pit stop.
 - Suggerimenti di assetto generici dal modello locale.
