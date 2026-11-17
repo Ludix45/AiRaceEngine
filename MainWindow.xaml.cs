@@ -227,7 +227,7 @@ public partial class MainWindow : Window
 
     private TelemetrySnapshot GetUsableSnapshot()
     {
-        var t = _telemetry.GetFreshSnapshot();
+        var t = _telemetry.GetFreshSnapshot(forceFieldRead: true);
         return t.Connected && (DateTime.Now - t.Timestamp).TotalSeconds <= 3 ? t : t with { Connected = false };
     }
 

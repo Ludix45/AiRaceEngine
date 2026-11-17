@@ -33,6 +33,20 @@ public sealed class AcFieldService : IDisposable
 
     public AcFieldSnapshot Current => Volatile.Read(ref _current);
 
+    /// <summary>Reads one field frame synchronously for an on-demand radio call.</summary>
+    public void RefreshNow()
+    {
+        try
+        {
+            using var map = MemoryMappedFile.OpenExisting(MapName, MemoryMappedFileRights.Read);
+            using var view = map.CreateViewAccessor(0, HeaderSize + MaxCars * CarSize, MemoryMappedFileAccess.Read);
+            ReadFrame(view);
+        }
+        catch (FileNotFoundException) { }
+        catch (WaitHandleCannotBeOpenedException) { }
+        catch (Exception) { }
+    }
+
     private async Task ReadLoopAsync()
     {
         while (!_cts.IsCancellationRequested)

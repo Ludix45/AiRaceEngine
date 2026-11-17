@@ -72,9 +72,12 @@ public static class RaceEngineerFacts
         var player = cars.FirstOrDefault(x => x.Id == 0);
         if (player is null) return "Non riesco a leggere la tua posizione in classifica in questo momento.";
         var length = t.TrackLengthMeters;
-        var valid = cars.Where(x => x.Id != player.Id && (x.Flags & 1) != 0 && x.Position > 0).ToArray();
-        var ahead = valid.Where(x => x.Position < player.Position).OrderByDescending(x => x.Position).FirstOrDefault();
-        var behind = valid.Where(x => x.Position > player.Position).OrderBy(x => x.Position).FirstOrDefault();
+        // Position is refreshed by AC only at timing lines. RealtimePosition is
+        // the live ordering and changes immediately when cars swap places.
+        var valid = cars.Where(x => x.Id != player.Id && (x.Flags & 1) != 0 && LiveRank(x) >= 0).ToArray();
+        var playerRank = LiveRank(player);
+        var ahead = valid.Where(x => LiveRank(x) < playerRank).OrderByDescending(LiveRank).FirstOrDefault();
+        var behind = valid.Where(x => LiveRank(x) > playerRank).OrderBy(LiveRank).FirstOrDefault();
         var asksAhead = query?.Contains("davanti", StringComparison.Ordinal) == true;
         var asksBehind = query?.Contains("dietro", StringComparison.Ordinal) == true;
         if (asksAhead && ahead is not null) return Describe(ahead, ProgressDelta(ahead, player, length), "davanti", t);
@@ -110,15 +113,19 @@ public static class RaceEngineerFacts
 
     private static float ProgressDelta(FieldCar car, FieldCar player, float length)
     {
-        if (length <= 0) return car.Position < player.Position ? 1 : car.Position > player.Position ? -1 : 0;
+        if (length <= 0) return LiveRank(car) < LiveRank(player) ? 1 : LiveRank(car) > LiveRank(player) ? -1 : 0;
         var delta = ((car.Laps - player.Laps) + (car.Spline - player.Spline)) * length;
-        if (car.Position > 0 && player.Position > 0)
+        var carRank = LiveRank(car);
+        var playerRank = LiveRank(player);
+        if (carRank >= 0 && playerRank >= 0)
         {
-            if (car.Position < player.Position && delta <= 0) delta += length;
-            if (car.Position > player.Position && delta >= 0) delta -= length;
+            if (carRank < playerRank && delta <= 0) delta += length;
+            if (carRank > playerRank && delta >= 0) delta -= length;
         }
         return delta;
     }
+
+    private static int LiveRank(FieldCar car) => car.RealtimePosition >= 0 ? car.RealtimePosition : car.Position;
 
     private static string Fuel(TelemetrySnapshot t)
     {

@@ -39,6 +39,7 @@ public sealed class AssettoTelemetryService : IDisposable
         if (!_hasPhysics || !_hasGraphics) return;
         var p = _physics;
         var g = _graphics;
+        var field = FreshField();
         var wearValues = p.TyreWear ?? Array.Empty<float>();
         var tempValues = p.TyreCoreTemperature ?? Array.Empty<float>();
         var damageValues = p.CarDamage ?? Array.Empty<float>();
@@ -74,7 +75,9 @@ public sealed class AssettoTelemetryService : IDisposable
         var next = new TelemetrySnapshot(
             Connected: true, SpeedKmh: p.SpeedKmh, FuelLitres: p.Fuel,
             Gear: p.Gear, Rpm: p.Rpms, CompletedLaps: g.CompletedLaps,
-            Position: g.Position, NumberOfLaps: g.NumberOfLaps, Session: (int)g.Session,
+            // Graphics.Position is the timing-line classification. The Python
+            // API's real-time ranking changes as soon as an overtake happens.
+            Position: LivePosition(field.Cars, g.Position), NumberOfLaps: g.NumberOfLaps, Session: (int)g.Session,
             Status: (int)g.Status, Flag: flag, PenaltyTime: g.PenaltyTime,
             InPit: g.IsInPit != 0, InPitLane: g.IsInPitLane != 0,
             Car: _hasStatic ? _static.CarModel ?? "" : "",
@@ -107,7 +110,7 @@ public sealed class AssettoTelemetryService : IDisposable
             MandatoryPitDone: g.MandatoryPitDone,
             PitWindowStart: _hasStatic ? _static.PitWindowStart : 0,
             PitWindowEnd: _hasStatic ? _static.PitWindowEnd : 0,
-            FieldCars: FreshFieldCars());
+            FieldCars: field.Cars);
 
         var previous = Current;
         Current = next;
@@ -123,22 +126,41 @@ public sealed class AssettoTelemetryService : IDisposable
     /// and graphics are polled at 20 ms, while the AC bridge publishes rivals
     /// independently, so a question never waits for a lap or UI refresh.
     /// </summary>
-    public TelemetrySnapshot GetFreshSnapshot()
+    public TelemetrySnapshot GetFreshSnapshot(bool forceFieldRead = false)
     {
+        // A PTT request forces a direct shared-memory read instead of waiting
+        // for the background reader's next 20 ms pass.
+        if (forceFieldRead) _field.RefreshNow();
         var snapshot = Current;
-        var field = _field.Current;
-        if (field.ReceivedAt <= DateTime.Now.AddMilliseconds(-250)) return snapshot with { FieldCars = [] };
+        var field = FreshField();
+        if (field.Cars.Count == 0) return snapshot with { FieldCars = [] };
         return snapshot with
         {
             FieldCars = field.Cars,
-            TrackLengthMeters = snapshot.TrackLengthMeters > 0 ? snapshot.TrackLengthMeters : field.TrackLengthMeters
+            TrackLengthMeters = snapshot.TrackLengthMeters > 0 ? snapshot.TrackLengthMeters : field.TrackLengthMeters,
+            Position = LivePosition(field.Cars, snapshot.Position)
         };
     }
 
-    private IReadOnlyList<FieldCar> FreshFieldCars()
+    private AcFieldSnapshot FreshField()
     {
         var field = _field.Current;
-        return field.ReceivedAt > DateTime.Now.AddMilliseconds(-250) ? field.Cars : [];
+        return field.ReceivedAt > DateTime.Now.AddMilliseconds(-250)
+            ? field
+            : new AcFieldSnapshot([], 0, DateTime.MinValue);
+    }
+
+    private static int LivePosition(IReadOnlyList<FieldCar> cars, int fallback)
+    {
+        var player = cars.FirstOrDefault(c => c.Id == 0);
+        if (player is null || player.RealtimePosition < 0) return fallback;
+
+        // Derive P1/P2/... from the ordering instead of assuming whether this
+        // AC build uses zero- or one-based values for the live API.
+        var ordered = cars.Where(c => c.RealtimePosition >= 0)
+            .OrderBy(c => c.RealtimePosition).ThenBy(c => c.Id).ToArray();
+        var index = Array.FindIndex(ordered, c => c.Id == player.Id);
+        return index >= 0 ? index + 1 : fallback;
     }
 
     // AC tyreWear is a grip/health signal: it can rise during warm-up and decline with use.

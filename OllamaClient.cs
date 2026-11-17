@@ -49,9 +49,10 @@ public sealed class OllamaClient
             },
             Campo = field.Select(c => new
             {
-                c.Driver, c.Car, c.Position, c.Laps, c.Spline, c.SpeedMs, c.BestLapMs, c.LastLapMs,
+                c.Driver, c.Car, PosizioneUfficiale = c.Position, PosizioneLive = c.RealtimePosition,
+                c.Laps, c.Spline, c.SpeedMs, c.BestLapMs, c.LastLapMs,
                 PitLane = (c.Flags & 2) != 0, Ai = (c.Flags & 32) != 0
-            }).OrderBy(c => c.Position).ToArray()
+            }).OrderBy(c => c.PosizioneLive >= 0 ? c.PosizioneLive : c.PosizioneUfficiale).ToArray()
         };
         var payload = new
         {
