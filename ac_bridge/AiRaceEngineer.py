@@ -16,7 +16,9 @@ MAX_CARS = 128
 HEADER_SIZE = 64
 CAR_SIZE = 288
 MAP_SIZE = HEADER_SIZE + MAX_CARS * CAR_SIZE
-UPDATE_INTERVAL = 0.10
+# Publish the live field at 40 Hz. Names/tyres are cached below, so the hot
+# path contains only AC state reads and one shared-memory frame write.
+UPDATE_INTERVAL = 0.025
 TEXT_INTERVAL = 2.0
 
 HEADER = struct.Struct("<8i2d2f")

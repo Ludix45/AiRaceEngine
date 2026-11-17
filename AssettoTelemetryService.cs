@@ -23,8 +23,10 @@ public sealed class AssettoTelemetryService : IDisposable
 
     public AssettoTelemetryService()
     {
-        _ac.PhysicsInterval = 50;
-        _ac.GraphicsInterval = 250;
+        // Race-radio questions need the state now, not the state at the end of
+        // the last lap. These are polling intervals in milliseconds.
+        _ac.PhysicsInterval = 20;
+        _ac.GraphicsInterval = 20;
         _ac.StaticInfoInterval = 1500;
         _ac.PhysicsUpdated += (_, e) => { lock (_gate) { _physics = e.Physics; _hasPhysics = true; Publish(); } };
         _ac.GraphicsUpdated += (_, e) => { lock (_gate) { _graphics = e.Graphics; _hasGraphics = true; Publish(); } };
@@ -85,6 +87,11 @@ public sealed class AssettoTelemetryService : IDisposable
             SessionTimeLeftSeconds: g.SessionTimeLeft, FuelPerLap: _fuelPerLap,
             WearPerLapPercent: _wearPerLap, FlagText: flagText, Timestamp: DateTime.Now,
             SteeringAngle: p.SteerAngle, Clutch: p.Clutch, TC: p.TC, ABS: p.Abs, Drs: p.Drs,
+            DrsAvailable: p.DrsAvailable, DrsEnabled: p.DrsEnabled, PitLimiterOn: p.PitLimiterOn,
+            EngineBrake: p.EngineBrake, ErsRecoveryLevel: p.ErsRecoveryLevel, ErsPowerLevel: p.ErsPowerLevel,
+            KersCharge: p.KersCharge, KersInput: p.KersInput, KersCurrentKJ: p.KersCurrentKJ,
+            BrakeBias: p.BrakeBias, TurboBoost: p.TurboBoost, NumberOfTyresOut: p.NumberOfTyresOut,
+            CurrentSectorIndex: g.CurrentSectorIndex, DistanceTravelled: g.DistanceTraveled,
             TyreWearWheels: wearValues, TyreDirtyLevel: p.TyreDirtyLevel ?? [],
             TyreWearEstimateWheels: wearByWheel,
             TyrePressure: p.WheelsPressure ?? [], TyreInnerTemp: p.TyreTempI ?? [],
@@ -100,7 +107,7 @@ public sealed class AssettoTelemetryService : IDisposable
             MandatoryPitDone: g.MandatoryPitDone,
             PitWindowStart: _hasStatic ? _static.PitWindowStart : 0,
             PitWindowEnd: _hasStatic ? _static.PitWindowEnd : 0,
-            FieldCars: _field.Current.ReceivedAt > DateTime.Now.AddSeconds(-1) ? _field.Current.Cars : []);
+            FieldCars: FreshFieldCars());
 
         var previous = Current;
         Current = next;
@@ -109,6 +116,29 @@ public sealed class AssettoTelemetryService : IDisposable
             RaceEventDetected?.Invoke(ev);
         _previousDamageTotal = damageTotal;
         Updated?.Invoke(next);
+    }
+
+    /// <summary>
+    /// Gives a radio request the newest independently-read field frame. Physics
+    /// and graphics are polled at 20 ms, while the AC bridge publishes rivals
+    /// independently, so a question never waits for a lap or UI refresh.
+    /// </summary>
+    public TelemetrySnapshot GetFreshSnapshot()
+    {
+        var snapshot = Current;
+        var field = _field.Current;
+        if (field.ReceivedAt <= DateTime.Now.AddMilliseconds(-250)) return snapshot with { FieldCars = [] };
+        return snapshot with
+        {
+            FieldCars = field.Cars,
+            TrackLengthMeters = snapshot.TrackLengthMeters > 0 ? snapshot.TrackLengthMeters : field.TrackLengthMeters
+        };
+    }
+
+    private IReadOnlyList<FieldCar> FreshFieldCars()
+    {
+        var field = _field.Current;
+        return field.ReceivedAt > DateTime.Now.AddMilliseconds(-250) ? field.Cars : [];
     }
 
     // AC tyreWear is a grip/health signal: it can rise during warm-up and decline with use.

@@ -152,7 +152,7 @@ public partial class MainWindow : Window
     private void RefreshUi(object? sender, EventArgs e)
     {
         RefreshVoiceDiagnostic();
-        var t = _telemetry.Current;
+        var t = _telemetry.GetFreshSnapshot();
         if (t.Connected && (DateTime.Now - t.Timestamp).TotalSeconds > 3) t = t with { Connected = false };
         ConnectionDot.Fill = t.Connected ? Brushes.LimeGreen : Brushes.Gray;
         var fieldCount = t.FieldCars?.Count ?? 0;
@@ -227,7 +227,7 @@ public partial class MainWindow : Window
 
     private TelemetrySnapshot GetUsableSnapshot()
     {
-        var t = _telemetry.Current;
+        var t = _telemetry.GetFreshSnapshot();
         return t.Connected && (DateTime.Now - t.Timestamp).TotalSeconds <= 3 ? t : t with { Connected = false };
     }
 

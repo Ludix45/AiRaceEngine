@@ -41,7 +41,11 @@ public sealed class OllamaClient
                 telemetry.SteeringAngle, telemetry.AccG, telemetry.AirTempC, telemetry.RoadTempC,
                 telemetry.SurfaceGrip, telemetry.FlagText, telemetry.PenaltyTime, telemetry.InPitLane,
                 telemetry.InPit, telemetry.MandatoryPitDone, telemetry.PitWindowStart, telemetry.PitWindowEnd,
-                telemetry.NormalizedCarPosition, telemetry.TrackLengthMeters
+                telemetry.NormalizedCarPosition, telemetry.TrackLengthMeters, telemetry.CurrentSectorIndex,
+                telemetry.DistanceTravelled, telemetry.Drs, telemetry.DrsAvailable, telemetry.DrsEnabled,
+                telemetry.PitLimiterOn, telemetry.EngineBrake, telemetry.ErsRecoveryLevel, telemetry.ErsPowerLevel,
+                telemetry.KersCharge, telemetry.KersInput, telemetry.KersCurrentKJ, telemetry.BrakeBias,
+                telemetry.TurboBoost, telemetry.NumberOfTyresOut, telemetry.Timestamp
             },
             Campo = field.Select(c => new
             {

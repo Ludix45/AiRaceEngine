@@ -46,7 +46,8 @@ public sealed class AcFieldService : IDisposable
             catch (FileNotFoundException) { }
             catch (WaitHandleCannotBeOpenedException) { }
             catch (Exception) { }
-            try { await Task.Delay(100, _cts.Token).ConfigureAwait(false); }
+            // Keep rival data within a few rendered frames of a radio request.
+            try { await Task.Delay(20, _cts.Token).ConfigureAwait(false); }
             catch (TaskCanceledException) { break; }
         }
     }
