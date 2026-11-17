@@ -14,7 +14,7 @@ public static class RaceEngineerFacts
         if (ContainsAny(q, "gomma", "gomme", "pneumatic", "usura", "temperatura gomme", "pressione gomme"))
             return Tyres(t);
         if (ContainsAny(q, "davanti", "dietro", "rivale", "avversar", "raggiunger", "superar", "chi c e", "chi c'"))
-            return Rivals(t);
+            return Rivals(t, q);
         if (ContainsAny(q, "benzina", "carburante", "rifornimento", "pit stop", "sosta", "box"))
             return Fuel(t);
         if (ContainsAny(q, "ultimo giro", "ultima tornata", "come e andato il giro", "come e andata il giro", "ritmo", "passo gara", "pace"))
@@ -34,18 +34,19 @@ public static class RaceEngineerFacts
         // AC damage values are normalized on some versions/cars and expressed as percentages on others.
         var scale = damage.Any(v => v > 1.01f) ? 1f : 100f;
         var percent = damage.Select(v => v * scale).ToArray();
-        var affected = percent.Count(v => v >= 5f);
         var max = percent.Max();
-        if (max < 5f) return "Non risultano danni rilevanti. Puoi continuare; se senti l’auto diversa, ricontrolliamo dopo un altro giro.";
+        if (max < 5f) return "Nessun danno rilevante.";
 
         var severity = max < 15f ? "lievi" : max < 40f ? "moderati" : "importanti";
-        var extent = affected == 1 ? "un’area" : $"{affected} aree";
-        var advice = max < 15f
-            ? "Puoi continuare, ma fai attenzione se l’auto inizia a tirare o vibrare."
-            : max < 40f
-                ? "Continua con prudenza; se l’auto tira, vibra o perde stabilità, rientra ai box per controllarla."
-                : "Rientra ai box appena puoi: il danno può compromettere stabilità e prestazioni.";
-        return $"Danni {severity}: coinvolta {extent}. {advice}";
+        var areas = new[] { "anteriore", "posteriore", "lato sinistro", "lato destro" };
+        var worst = Array.IndexOf(percent, max);
+        var area = worst >= 0 && worst < areas.Length ? areas[worst] : "carrozzeria";
+        var paceLoss = t.LastLapTimeSeconds is >= 10 and <= 900 && t.BestLapTimeSeconds is >= 10 and <= 900
+            ? t.LastLapTimeSeconds - t.BestLapTimeSeconds
+            : 0;
+        return paceLoss > 0.05f
+            ? $"Danno {severity} {area}. Ritmo attuale: +{paceLoss:0.0} s al giro."
+            : $"Danno {severity} {area}. Perdita sul giro non ancora misurabile.";
     }
 
     private static string Tyres(TelemetrySnapshot t)
@@ -55,13 +56,10 @@ public static class RaceEngineerFacts
         if (values.Length == 0) return "Non riesco ancora a valutare l’usura delle gomme.";
         var average = values.Average();
         var highest = values.Max();
-        var advice = highest >= 70 ? "Le gomme sono molto consumate: programma una sosta appena possibile."
-            : highest >= 40 ? "L’usura comincia a essere significativa: tieni d’occhio il grip e pianifica la sosta."
-            : "Per ora puoi continuare; se perdi aderenza o i tempi peggiorano, valuta una sosta.";
-        return $"Gomme {t.TyreCompound}: usura stimata media {average:0}%, massimo {highest:0}%. {advice}";
+        return $"Gomme {t.TyreCompound}: usura {average:0}%, punto peggiore {highest:0}%.";
     }
 
-    private static string Rivals(TelemetrySnapshot t)
+    private static string Rivals(TelemetrySnapshot t, string? query = null)
     {
         var cars = t.FieldCars;
         if (cars is null || cars.Count == 0)
@@ -69,52 +67,39 @@ public static class RaceEngineerFacts
 
         var player = cars.FirstOrDefault(x => x.Id == 0);
         if (player is null) return "Non riesco a leggere la tua posizione in classifica in questo momento.";
-        var length = t.TrackLengthMeters > 0 ? t.TrackLengthMeters : 0;
-        var candidates = cars.Where(x => x.Id != player.Id && (x.Flags & 1) != 0)
-            .Select(x => (Car: x, Delta: ProgressDelta(x, player, length)))
-            .Where(x => Math.Abs(x.Delta) > 0.5f)
-            .OrderBy(x => Math.Abs(x.Delta)).ToArray();
-
-        if (candidates.Length == 0)
-            return $"Sei P{t.Position}; al momento non ho un rivale abbastanza vicino da segnalarti.";
-
-        var ahead = candidates.FirstOrDefault(x => x.Delta > 0);
-        var behind = candidates.FirstOrDefault(x => x.Delta < 0);
-        var parts = new List<string>();
-        if (ahead.Car is not null)
-            parts.Add(Describe(ahead.Car, ahead.Delta, "davanti", t.TrackLengthMeters, t.BestLapTimeSeconds));
-        if (behind.Car is not null)
-            parts.Add(Describe(behind.Car, behind.Delta, "dietro", t.TrackLengthMeters, t.BestLapTimeSeconds));
-        if (parts.Count == 0)
-            return $"Sei P{t.Position}; non riesco a stimare il distacco in questo momento.";
-        return $"Sei P{t.Position}. {string.Join(" ", parts)}";
+        var length = t.TrackLengthMeters;
+        var valid = cars.Where(x => x.Id != player.Id && (x.Flags & 1) != 0 && x.Position > 0).ToArray();
+        var ahead = valid.Where(x => x.Position < player.Position).OrderByDescending(x => x.Position).FirstOrDefault();
+        var behind = valid.Where(x => x.Position > player.Position).OrderBy(x => x.Position).FirstOrDefault();
+        var asksAhead = query?.Contains("davanti", StringComparison.Ordinal) == true;
+        var asksBehind = query?.Contains("dietro", StringComparison.Ordinal) == true;
+        if (asksAhead && ahead is not null) return Describe(ahead, ProgressDelta(ahead, player, length), "davanti", t);
+        if (asksBehind && behind is not null) return Describe(behind, ProgressDelta(behind, player, length), "dietro", t);
+        if (ahead is null && behind is null) return "Nessun rivale vicino.";
+        if (ahead is not null) return Describe(ahead, ProgressDelta(ahead, player, length), "davanti", t);
+        return Describe(behind!, ProgressDelta(behind!, player, length), "dietro", t);
     }
 
     /// <summary>Short wording for automatic end-of-lap radio calls.</summary>
     public static string GetGapBrief(TelemetrySnapshot t)
     {
-        var text = Rivals(t);
-        return text.StartsWith("Sei P", StringComparison.Ordinal) ? text : "Distacchi non disponibili.";
+        return Rivals(t);
     }
 
-    private static string Describe(FieldCar car, float delta, string direction, float trackLength, float playerBestLapSeconds)
+    private static string Describe(FieldCar car, float delta, string direction, TelemetrySnapshot t)
     {
         var name = string.IsNullOrWhiteSpace(car.Driver) ? car.Car : car.Driver;
         var distance = Math.Abs(delta);
+        var trackLength = t.TrackLengthMeters;
+        var playerBestLapSeconds = t.BestLapTimeSeconds;
         var lapSeconds = ValidLapSeconds(car.BestLapMs) ?? ValidLapSeconds(car.LastLapMs)
             ?? (playerBestLapSeconds is >= 10 and <= 900 ? playerBestLapSeconds : null);
-        var secondsText = lapSeconds is { } paceSeconds && trackLength > 0
-            ? $" (circa {distance / trackLength * paceSeconds:0.0} s)"
-            : "";
-        var pos = car.Position > 0 ? $" in P{car.Position}" : "";
-        var pit = (car.Flags & 2) != 0 ? ", in pit lane" : "";
-        var lap = trackLength > 0 && distance >= trackLength ? $", {distance / trackLength:0.#} giri" : "";
-        var tip = distance <= 15 && direction == "davanti"
-            ? " Sei in scia: prova a preparare una buona uscita dalla curva per attaccare."
-            : distance <= 15 && direction == "dietro"
-                ? " È vicino: cura l’uscita dalle curve e difendi la traiettoria."
-                : "";
-        return $"{name}{pos} è {direction} di circa {distance:0} m{secondsText}{lap}{pit}.{tip}";
+        var seconds = lapSeconds is { } paceSeconds && trackLength > 0
+            ? distance / trackLength * paceSeconds
+            : t.SpeedKmh > 15 ? distance / (t.SpeedKmh / 3.6f) : 0;
+        return seconds > 0.01f
+            ? $"{name} {direction}: {seconds:0.0} secondi."
+            : $"{name} {direction}: {distance:0} metri.";
     }
 
     private static float? ValidLapSeconds(int ms) => ms is >= 10000 and <= 900000 ? ms / 1000f : null;
@@ -184,8 +169,7 @@ public static class RaceEngineerFacts
         var parts = new List<string>();
         if (t.Position > 0)
         {
-            var rivalText = Rivals(t);
-            parts.Add(rivalText.StartsWith("Sei P", StringComparison.Ordinal) ? rivalText : $"Sei P{t.Position}.");
+            parts.Add($"Sei P{t.Position}. {Rivals(t)}");
         }
 
         if (t.TyreWearEstimateWheels is { Length: > 0 })

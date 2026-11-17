@@ -188,13 +188,17 @@ public partial class MainWindow : Window
         catch (Exception ex) { await Dispatcher.InvokeAsync(() => ModelStatus.Text = ex.Message); }
     }
 
-    private async Task SendQuestionAsync(string? prompt = null)
+    private async Task SendQuestionAsync(string? prompt = null, bool fromRadio = false)
     {
         var question = (prompt ?? ChatInput.Text).Trim();
         if (question.Length == 0 || _sending) return;
+        var normalizedRadioQuestion = fromRadio ? RadioIntent.NormalizeQuestion(question) : null;
+        var routedQuestion = normalizedRadioQuestion ?? question;
         var telemetry = GetUsableSnapshot();
-        var factualAnswer = RaceEngineerControl.TryApply(question, _settings, _voice)
-            ?? RaceEngineerFacts.TryAnswer(question, telemetry);
+        var factualAnswer = RaceEngineerControl.TryApply(routedQuestion, _settings, _voice)
+            ?? RaceEngineerFacts.TryAnswer(routedQuestion, telemetry);
+        if (fromRadio && factualAnswer is null)
+            factualAnswer = "Non ho capito. Ripeti soltanto: danni, davanti, dietro, gomme, carburante o ultimo giro.";
         if (factualAnswer is not null)
         {
             _sending = true;
@@ -236,7 +240,7 @@ public partial class MainWindow : Window
             _pttActive = false;
             VoiceStatus.Text = $"Riconosciuto dal microfono: «{phrase}»";
             ChatInput.Text = phrase;
-            _ = SendQuestionAsync(phrase);
+            _ = SendQuestionAsync(phrase, fromRadio: true);
         });
     }
 
@@ -349,6 +353,11 @@ public partial class MainWindow : Window
         OutputVoiceStatus.Text = "Preparazione della voce neurale italiana…";
         await _voice.PrepareNaturalVoiceAsync();
         OutputVoiceStatus.Text = _voice.OutputVoiceStatus;
+    }
+
+    private void TestVoice_Click(object sender, RoutedEventArgs e)
+    {
+        _voice.Speak("Radio check. Ingegnere pronto.");
     }
 
     private void RaceEngineerCheck_Changed(object sender, RoutedEventArgs e)

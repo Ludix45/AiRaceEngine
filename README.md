@@ -72,6 +72,7 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 - Coach curva che conserva il giro personale più veloce per auto e pista, con bip distinti di frenata e riapertura del gas dal giro successivo.
 - Voce neurale italiana locale facoltativa: si scarica una volta insieme al motore Piper e viene salvata accanto ai modelli locali. Nelle impostazioni puoi scegliere anche una voce Windows e regolare la velocità fra 75% e 135%.
 - Comandi radio: “parla più veloce”, “parla più piano”, “dimmi i distacchi”, “non dirmi i distacchi”, “ogni giro dimmi il carburante”, “box al giro 12”, “annulla piano box”, “non parlare per il prossimo giro”, “ingegnere on/off”.
+- La radio corregge le trascrizioni vocali comuni prima di rispondere: ad esempio “Dania macchina” viene interpretato come danni alla macchina e “ciao davanti” come chi hai davanti. Se una frase non corrisponde a un comando di gara, chiede di ripeterla invece di inventare consigli generici.
 - Opzione finestra sempre in primo piano.
 - Pulsante per scaricare il modello configurato attraverso l’API locale Ollama.
 

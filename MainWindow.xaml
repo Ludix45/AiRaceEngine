@@ -123,7 +123,7 @@
                         </Grid>
                         <Slider x:Name="SpeechSpeedSlider" Minimum="75" Maximum="135" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="SpeechSpeedSlider_ValueChanged" Margin="0,0,0,9"/>
                         <CheckBox x:Name="NaturalVoiceCheck" Content="Voce neurale italiana locale (più fluida)" Foreground="#EAF0F3" Checked="NaturalVoiceCheck_Changed" Unchecked="NaturalVoiceCheck_Changed"/>
-                        <Button Content="Prepara voce neurale" HorizontalAlignment="Left" Margin="0,8,0,0" Click="PrepareNaturalVoice_Click"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Button Content="Prepara voce neurale" Click="PrepareNaturalVoice_Click"/><Button Content="Ascolta prova" Margin="8,0,0,0" Click="TestVoice_Click"/></StackPanel>
                         <TextBlock x:Name="OutputVoiceStatus" Text="Voce italiana di Windows attiva." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,8,0,12"/>
                         <CheckBox x:Name="RaceEngineerCheck" Content="Ingegnere di gara attivo" Foreground="#EAF0F3" Checked="RaceEngineerCheck_Changed" Unchecked="RaceEngineerCheck_Changed" Margin="0,0,0,10"/>
                         <TextBlock Text="Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; il riconoscimento usa il microfono predefinito di Windows senza inviare l’audio a un servizio cloud." TextWrapping="Wrap"/>

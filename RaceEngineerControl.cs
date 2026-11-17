@@ -9,6 +9,8 @@ public static class RaceEngineerControl
     public static string? TryApply(string message, AppSettings settings, VoiceService voice)
     {
         var q = Normalize(message);
+        if (Contains(q, "risposte brevi", "risposta breve", "parla poco", "meno dettagli"))
+            return "Ricevuto. Ti darò solo il dato richiesto.";
         if (Contains(q, "piu veloce", "parla veloce", "aumenta velocita", "velocita maggiore"))
         {
             settings.SpeechRatePercent = Math.Min(135, settings.SpeechRatePercent + 10);
