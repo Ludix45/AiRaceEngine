@@ -38,6 +38,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         OllamaUrlInput.Text = _settings.OllamaUrl;
         ModelInput.Text = _settings.Model;
+        RecognitionModelCombo.SelectedIndex = _settings.SpeechRecognitionModel.Equals("tiny", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
         OutputVoiceCombo.ItemsSource = _voice.InstalledItalianVoices;
         if (!string.IsNullOrWhiteSpace(_settings.OutputVoice) && _voice.InstalledItalianVoices.Contains(_settings.OutputVoice))
             OutputVoiceCombo.SelectedItem = _settings.OutputVoice;
@@ -63,7 +64,7 @@ public partial class MainWindow : Window
         _refresh.Start();
         Closed += OnClosed;
         _ = CheckOllamaAsync();
-        _ = _voice.InitializeAsync();
+        _ = _voice.InitializeAsync(_settings.SpeechRecognitionModel);
         if (_settings.UseNaturalVoice) _ = _voice.PrepareNaturalVoiceAsync();
         EventsList.Items.Add("Pronto. Avvia Assetto Corsa per collegare la telemetria condivisa.");
         ChatHistory.Text = "AI RACE ENGINEER · modello locale\n\nCollega Assetto Corsa e chiedi carburante, gomme, bandiere, penalità o un riepilogo stint.\n";
@@ -332,6 +333,15 @@ public partial class MainWindow : Window
         ApplyOutputVoiceSettings();
     }
 
+    private void RecognitionModel_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || RecognitionModelCombo.SelectedItem is not ComboBoxItem selected) return;
+        _settings.SpeechRecognitionModel = selected.Tag as string ?? "base";
+        _settings.Save();
+        VoiceStatus.Text = "Cambio modello vocale in corso…";
+        _ = _voice.InitializeAsync(_settings.SpeechRecognitionModel);
+    }
+
     private void SpeechSpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (!IsLoaded) return;
@@ -433,6 +443,7 @@ public partial class MainWindow : Window
         _settings.OllamaUrl = OllamaUrlInput.Text.Trim().TrimEnd('/');
         _settings.Model = ModelInput.Text.Trim();
         _settings.ModelSelectionExplicit = true;
+        if (RecognitionModelCombo.SelectedItem is ComboBoxItem recognition) _settings.SpeechRecognitionModel = recognition.Tag as string ?? "base";
         _settings.OutputVoice = OutputVoiceCombo.SelectedItem as string ?? _settings.OutputVoice;
         _settings.SpeechRatePercent = (int)Math.Round(SpeechSpeedSlider.Value);
         _settings.UseNaturalVoice = NaturalVoiceCheck.IsChecked == true;

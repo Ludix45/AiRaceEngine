@@ -14,8 +14,9 @@ namespace AiRaceEngineer;
 
 public sealed class VoiceService : IDisposable
 {
-    private const string WhisperModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
-    private const string ModelSha256 = "BE07E048E1E599AD46341C8D2A135645097A538221678B7ACDD1B1919C6E1B21";
+    private const string WhisperTinyModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
+    private const string WhisperBaseModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+    private const string TinyModelSha256 = "BE07E048E1E599AD46341C8D2A135645097A538221678B7ACDD1B1919C6E1B21";
     private const string PiperArchiveUrl = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
     private const string PiperModelUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/paola/medium/it_IT-paola-medium.onnx?download=true";
     private const string PiperConfigUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/paola/medium/it_IT-paola-medium.onnx.json?download=true";
@@ -31,6 +32,7 @@ public sealed class VoiceService : IDisposable
     private WhisperFactory? _whisperFactory;
     private WhisperProcessor? _whisperProcessor;
     private Task? _initializing;
+    private string _recognitionModel = "base";
     private Task? _naturalVoiceInitializing;
     private string? _piperExecutable;
     private string? _piperModel;
@@ -95,22 +97,31 @@ public sealed class VoiceService : IDisposable
         }
     }
 
-    public Task InitializeAsync()
+    public Task InitializeAsync(string recognitionModel = "base")
     {
-        lock (_captureGate) return _initializing ??= InitializeCoreAsync();
+        lock (_captureGate)
+        {
+            recognitionModel = NormalizeRecognitionModel(recognitionModel);
+            if (_whisperProcessor is not null && _recognitionModel == recognitionModel) return Task.CompletedTask;
+            if (_initializing is { IsCompleted: false }) return _initializing;
+            _recognitionModel = recognitionModel;
+            return _initializing = InitializeCoreAsync(recognitionModel);
+        }
     }
 
-    private async Task InitializeCoreAsync()
+    private async Task InitializeCoreAsync(string recognitionModel)
     {
         try
         {
-            var modelPath = GetModelPath();
-            if (!File.Exists(modelPath) || !await HasExpectedHashAsync(modelPath).ConfigureAwait(false))
-                await DownloadModelAsync(modelPath).ConfigureAwait(false);
+            var modelPath = GetModelPath(recognitionModel);
+            if (!IsModelUsable(modelPath, recognitionModel))
+                await DownloadModelAsync(modelPath, recognitionModel).ConfigureAwait(false);
 
+            _whisperProcessor?.Dispose();
+            _whisperFactory?.Dispose();
             _whisperFactory = WhisperFactory.FromPath(modelPath);
             _whisperProcessor = _whisperFactory.CreateBuilder().WithLanguage("it").Build();
-            SetStatus("Whisper italiano pronto · locale, modello tiny.");
+            SetStatus($"Riconoscimento italiano pronto · locale, modello {recognitionModel}.");
         }
         catch (Exception ex)
         {
@@ -118,23 +129,25 @@ public sealed class VoiceService : IDisposable
         }
     }
 
-    private static string GetModelPath()
+    private static string GetModelPath(string recognitionModel)
     {
         var root = Environment.GetEnvironmentVariable("OLLAMA_MODELS");
         if (string.IsNullOrWhiteSpace(root))
             root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AiRaceEngineer", "Models");
         var folder = Path.Combine(root, "AiRaceEngineer", "Whisper");
         Directory.CreateDirectory(folder);
-        return Path.Combine(folder, "ggml-tiny.bin");
+        return Path.Combine(folder, $"ggml-{recognitionModel}.bin");
     }
 
-    private async Task DownloadModelAsync(string path)
+    private async Task DownloadModelAsync(string path, string recognitionModel)
     {
         var temporaryPath = path + ".download";
-        SetStatus("Download modello vocale Whisper · 77 MB · nella cartella modelli Ollama…");
+        var url = recognitionModel == "tiny" ? WhisperTinyModelUrl : WhisperBaseModelUrl;
+        var size = recognitionModel == "tiny" ? "77 MB" : "142 MB";
+        SetStatus($"Download riconoscimento Whisper {recognitionModel} · {size} · una sola volta…");
         try
         {
-            using var response = await Http.GetAsync(WhisperModelUrl, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             var total = response.Content.Headers.ContentLength;
             await using var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -160,8 +173,8 @@ public sealed class VoiceService : IDisposable
                 }
             }
 
-            if (!await HasExpectedHashAsync(temporaryPath).ConfigureAwait(false))
-                throw new InvalidDataException("Verifica SHA-256 del modello non riuscita.");
+            if (!IsModelUsable(temporaryPath, recognitionModel))
+                throw new InvalidDataException("Il file del modello vocale non è valido.");
             File.Move(temporaryPath, path, true);
         }
         catch
@@ -171,13 +184,22 @@ public sealed class VoiceService : IDisposable
         }
     }
 
+    private static bool IsModelUsable(string path, string recognitionModel)
+    {
+        if (!File.Exists(path)) return false;
+        if (recognitionModel != "tiny") return new FileInfo(path).Length > 100_000_000;
+        return HasExpectedHashAsync(path).GetAwaiter().GetResult();
+    }
+
     private static async Task<bool> HasExpectedHashAsync(string path)
     {
         if (!File.Exists(path)) return false;
         await using var stream = File.OpenRead(path);
         var hash = await SHA256.HashDataAsync(stream).ConfigureAwait(false);
-        return Convert.ToHexString(hash).Equals(ModelSha256, StringComparison.OrdinalIgnoreCase);
+        return Convert.ToHexString(hash).Equals(TinyModelSha256, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string NormalizeRecognitionModel(string value) => value.Equals("tiny", StringComparison.OrdinalIgnoreCase) ? "tiny" : "base";
 
     public void StartListening()
     {

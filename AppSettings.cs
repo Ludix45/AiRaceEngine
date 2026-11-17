@@ -19,6 +19,7 @@ public sealed class AppSettings
     public int SpeechRatePercent { get; set; } = 100;
     public string OutputVoice { get; set; } = "";
     public bool UseNaturalVoice { get; set; } = true;
+    public string SpeechRecognitionModel { get; set; } = "base";
 
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

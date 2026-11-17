@@ -115,6 +115,11 @@
                     </StackPanel></Border>
                     <Border Grid.Column="1" Background="{StaticResource Panel}" CornerRadius="9" Padding="20"><StackPanel>
                         <TextBlock Text="Voce, radio e controller" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                        <TextBlock Text="Riconoscimento vocale" Foreground="{StaticResource Muted}"/>
+                        <ComboBox x:Name="RecognitionModelCombo" Margin="0,4,0,10" SelectionChanged="RecognitionModel_Changed">
+                            <ComboBoxItem Tag="base">Accurato · Whisper base · 142 MB</ComboBoxItem>
+                            <ComboBoxItem Tag="tiny">Veloce · Whisper tiny · 77 MB</ComboBoxItem>
+                        </ComboBox>
                         <TextBlock Text="Voce dell’ingegnere" Foreground="{StaticResource Muted}"/>
                         <ComboBox x:Name="OutputVoiceCombo" Margin="0,4,0,10" SelectionChanged="OutputVoice_Changed"/>
                         <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
