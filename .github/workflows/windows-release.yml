@@ -1,4 +1,4 @@
-name: Windows build
+name: Windows release
 
 on:
   push:
@@ -6,20 +6,63 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versione da pubblicare, per esempio 0.2.0. Lascia vuoto per il prossimo patch.'
+        required: false
+        type: string
 
 jobs:
-  build:
+  package:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determina versione
+        id: version
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          $isTag = $env:GITHUB_REF -like 'refs/tags/v*'
+          $isPullRequest = '${{ github.event_name }}' -eq 'pull_request'
+          $createdTag = $false
+          if ($isTag) {
+            $tag = $env:GITHUB_REF_NAME
+          } elseif (-not [string]::IsNullOrWhiteSpace($env:REQUESTED_VERSION)) {
+            $tag = 'v' + $env:REQUESTED_VERSION.Trim().TrimStart('v')
+            $createdTag = $true
+          } elseif ($isPullRequest) {
+            $tag = "v0.0.0-preview.$env:GITHUB_RUN_NUMBER"
+          } else {
+            $latest = git tag -l 'v[0-9]*' --sort=-version:refname | Select-Object -First 1
+            if ([string]::IsNullOrWhiteSpace($latest)) {
+              $tag = 'v0.1.0'
+            } elseif ($latest -match '^v(\d+)\.(\d+)\.(\d+)$') {
+              $tag = "v$($matches[1]).$($matches[2]).$([int]$matches[3] + 1)"
+            } else {
+              throw "Il tag più recente '$latest' non usa il formato vX.Y.Z. Crea un tag semantico o avvia manualmente la workflow."
+            }
+            $createdTag = $true
+          }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw "Versione non valida: $tag" }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$($tag.Substring(1))" >> $env:GITHUB_OUTPUT
+          "created_tag=$createdTag" >> $env:GITHUB_OUTPUT
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+
       - name: Pubblica Windows x64
         shell: pwsh
-        run: ./scripts/build.ps1 -OutputPath ./artifacts/win-x64
+        run: ./scripts/build.ps1 -OutputPath ./artifacts/win-x64 -Version '${{ steps.version.outputs.version }}'
+
       - name: Prepara pacchetto portabile
         shell: pwsh
         run: |
@@ -28,24 +71,27 @@ jobs:
           Copy-Item ./scripts/install-ac-bridge.ps1 ./artifacts/package/scripts/ -Force
           Copy-Item ./README.md ./artifacts/package/ -Force
           Compress-Archive -Path ./artifacts/package/* -DestinationPath ./artifacts/AiRaceEngineer-win-x64.zip -CompressionLevel Optimal
+
       - name: Carica artefatto build
         uses: actions/upload-artifact@v4
         with:
-          name: AiRaceEngineer-win-x64
+          name: AiRaceEngineer-win-x64-${{ steps.version.outputs.tag }}
           path: artifacts/AiRaceEngineer-win-x64.zip
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: windows-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Scarica pacchetto
-        uses: actions/download-artifact@v4
-        with:
-          name: AiRaceEngineer-win-x64
-          path: artifacts
+
+      - name: Crea tag della release automatica
+        if: github.event_name != 'pull_request' && steps.version.outputs.created_tag == 'True'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a '${{ steps.version.outputs.tag }}' -m 'Release ${{ steps.version.outputs.tag }}'
+          git push origin '${{ steps.version.outputs.tag }}'
+
       - name: Pubblica GitHub Release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
           files: artifacts/AiRaceEngineer-win-x64.zip

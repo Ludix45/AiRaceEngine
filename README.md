@@ -45,9 +45,9 @@ Da questa repository installa anche il ponte nel gioco con:
 .\scripts\install-ac-bridge.ps1 -AssettoCorsaPath "PERCORSO\assettocorsa"
 ```
 
-GitHub Actions compila automaticamente Windows x64 a ogni push su `main` e allega il pacchetto alle Release create con un tag `v*`.
+GitHub Actions compila automaticamente Windows x64 a ogni push su `main`, incrementa il numero **patch** (`v0.1.0`, `v0.1.1`, …), crea il tag e pubblica la GitHub Release con lo ZIP. La versione nel file `.exe` viene ricavata dallo stesso tag.
 
-Per pubblicare una versione: `git tag v0.1.0` e `git push origin main v0.1.0`. GitHub eseguirà la build e allegherà il pacchetto alla Release.
+Per una versione maggiore/minore, avvia manualmente la workflow **Windows release** da GitHub e inserisci `0.2.0` nel campo versione. Puoi anche creare e inviare un tag, ad esempio `git tag v0.2.0` e `git push origin v0.2.0`: la workflow pubblicherà quel tag senza modificarlo.
 
 ### Pubblicazione manuale su GitHub
 
