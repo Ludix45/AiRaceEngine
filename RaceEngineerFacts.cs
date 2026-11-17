@@ -45,12 +45,15 @@ public static class RaceEngineerFacts
         var areas = new[] { "anteriore", "posteriore", "lato sinistro", "lato destro" };
         var worst = Array.IndexOf(percent, max);
         var area = worst >= 0 && worst < areas.Length ? areas[worst] : "carrozzeria";
-        var paceLoss = t.LastLapTimeSeconds is >= 10 and <= 900 && t.BestLapTimeSeconds is >= 10 and <= 900
-            ? t.LastLapTimeSeconds - t.BestLapTimeSeconds
-            : 0;
-        return paceLoss > 0.05f
-            ? $"Danno {severity} {area}. Ultimo giro: +{paceLoss:0.0} s dal tuo migliore."
-            : $"Danno {severity} {area}. Perdita sul giro non ancora misurabile.";
+        var prefix = $"Danno {severity} {area}.";
+        if (t.DamageReferenceLapSeconds <= 0)
+            return $"{prefix} Perdita non stimabile: manca un giro pulito prima dell’urto.";
+        if (t.DamageEstimateLapCount == 0)
+            return $"{prefix} Perdita in calcolo: serve un giro completo dopo l’urto.";
+        if (t.DamageEstimatedLossSeconds <= 0.05f)
+            return $"{prefix} Nessuna perdita misurabile sui {t.DamageEstimateLapCount} giri dopo l’urto.";
+        var laps = t.DamageEstimateLapCount == 1 ? "giro" : "giri";
+        return $"{prefix} Perdita stimata: +{t.DamageEstimatedLossSeconds:0.0} s/giro ({t.DamageEstimateLapCount} {laps}).";
     }
 
     private static string Tyres(TelemetrySnapshot t)

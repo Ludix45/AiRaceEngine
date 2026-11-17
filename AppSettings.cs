@@ -124,6 +124,9 @@ public sealed record TelemetrySnapshot(
     int MandatoryPitDone = 0,
     int PitWindowStart = 0,
     int PitWindowEnd = 0,
+    float DamageReferenceLapSeconds = 0,
+    float DamageEstimatedLossSeconds = 0,
+    int DamageEstimateLapCount = 0,
     IReadOnlyList<FieldCar>? FieldCars = null);
 
 public sealed record RaceEvent(DateTime Time, string Category, string Message);

@@ -62,7 +62,7 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 ## Funzioni incluse
 
 - Lettura a bassa latenza dei blocchi Shared Memory di Assetto Corsa: dati fisici, giri, posizione, pit lane, penalità, bandiera, settore, DRS, ERS, KERS, freno motore, brake bias e stato gomme/freni. Il campo completo (nomi, posizioni, giri, spline, velocità, pit, input e tempi) viene aggiornato da una piccola app Python AC a 40 Hz; posizione, avversario davanti/dietro e distacco usano la classifica **real-time** anziché quella ufficiale aggiornata sul traguardo.
-- Risposte radio in italiano con valutazioni leggibili di danni, gomme, carburante e distacchi; il riepilogo gara mette in evidenza anche penalità, bandiere e cali di ritmo quando disponibili.
+- Risposte radio in italiano con valutazioni leggibili di danni, gomme, carburante e distacchi. Dopo un urto, conserva un riferimento pre-danno e stima la perdita in secondi/giro dai successivi giri completi; il riepilogo gara mette in evidenza anche penalità, bandiere e cali di ritmo quando disponibili.
 - Report automatico a ogni giro valido, con confronto al riferimento personale, chiamate di gomme/carburante e strategia box.
 - Avvisi locali per bandiere/penalità del gioco, ingresso e uscita box, consumo carburante, usura gomme e possibile incidente.
 - Stima carburante/usura e consiglio di pit stop.

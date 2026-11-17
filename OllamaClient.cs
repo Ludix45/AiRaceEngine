@@ -45,7 +45,8 @@ public sealed class OllamaClient
                 telemetry.DistanceTravelled, telemetry.Drs, telemetry.DrsAvailable, telemetry.DrsEnabled,
                 telemetry.PitLimiterOn, telemetry.EngineBrake, telemetry.ErsRecoveryLevel, telemetry.ErsPowerLevel,
                 telemetry.KersCharge, telemetry.KersInput, telemetry.KersCurrentKJ, telemetry.BrakeBias,
-                telemetry.TurboBoost, telemetry.NumberOfTyresOut, telemetry.Timestamp
+                telemetry.TurboBoost, telemetry.NumberOfTyresOut, telemetry.DamageReferenceLapSeconds,
+                telemetry.DamageEstimatedLossSeconds, telemetry.DamageEstimateLapCount, telemetry.Timestamp
             },
             Campo = field.Select(c => new
             {

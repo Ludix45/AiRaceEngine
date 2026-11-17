@@ -16,6 +16,9 @@ public sealed class AssettoTelemetryService : IDisposable
     private float _previousDamageTotal;
     private float _fuelPerLap, _wearPerLap;
     private readonly float[] _peakTyreHealth = new float[4];
+    private float _damageReferenceLapSeconds;
+    private int _damageStartedLap = -1;
+    private readonly Queue<float> _damageSampleLaps = new();
 
     public TelemetrySnapshot Current { get; private set; } = new();
     public event Action<TelemetrySnapshot>? Updated;
@@ -43,6 +46,7 @@ public sealed class AssettoTelemetryService : IDisposable
         var wearValues = p.TyreWear ?? Array.Empty<float>();
         var tempValues = p.TyreCoreTemperature ?? Array.Empty<float>();
         var damageValues = p.CarDamage ?? Array.Empty<float>();
+        var damageTotal = damageValues.Where(float.IsFinite).Sum();
         var wearByWheel = EstimateTyreWearPercent(wearValues);
         var wear = wearByWheel.Length == 0 ? 0 : wearByWheel.Average();
         var temp = tempValues.Length == 0 ? 0f : tempValues.Average();
@@ -64,6 +68,19 @@ public sealed class AssettoTelemetryService : IDisposable
             _lastLap = currentLap;
             _lastFuel = p.Fuel;
             _lastWear = wear;
+            RecordDamagedLap(currentLap, g.iLastTime / 1000f);
+        }
+
+        // Save the best available undamaged reference at the instant the game
+        // reports a new impact. We compare only subsequent full laps with it.
+        if (damageTotal > _previousDamageTotal + 0.05f)
+        {
+            var reference = ValidLap(g.iBestTime / 1000f) ? g.iBestTime / 1000f
+                : ValidLap(g.iLastTime / 1000f) ? g.iLastTime / 1000f : 0f;
+            if (_damageReferenceLapSeconds <= 0 && reference > 0)
+                _damageReferenceLapSeconds = reference;
+            _damageStartedLap = currentLap;
+            _damageSampleLaps.Clear();
         }
 
         var flag = (int)g.Flag;
@@ -110,16 +127,35 @@ public sealed class AssettoTelemetryService : IDisposable
             MandatoryPitDone: g.MandatoryPitDone,
             PitWindowStart: _hasStatic ? _static.PitWindowStart : 0,
             PitWindowEnd: _hasStatic ? _static.PitWindowEnd : 0,
+            DamageReferenceLapSeconds: _damageReferenceLapSeconds,
+            DamageEstimatedLossSeconds: DamageLossSeconds(),
+            DamageEstimateLapCount: _damageSampleLaps.Count,
             FieldCars: field.Cars);
 
         var previous = Current;
         Current = next;
-        var damageTotal = damageValues.Sum();
         foreach (var ev in RaceEventDetector.Compare(previous, next, _previousDamageTotal, damageTotal))
             RaceEventDetected?.Invoke(ev);
         _previousDamageTotal = damageTotal;
         Updated?.Invoke(next);
     }
+
+    private void RecordDamagedLap(int completedLaps, float lapSeconds)
+    {
+        if (_damageStartedLap < 0 || completedLaps <= _damageStartedLap || !ValidLap(lapSeconds)) return;
+        _damageSampleLaps.Enqueue(lapSeconds);
+        while (_damageSampleLaps.Count > 3) _damageSampleLaps.Dequeue();
+    }
+
+    private float DamageLossSeconds()
+    {
+        if (_damageReferenceLapSeconds <= 0 || _damageSampleLaps.Count == 0) return 0;
+        // Traffic may make a single lap slower (or faster), so this is a
+        // bounded estimate from the latest three complete post-impact laps.
+        return Math.Max(0, _damageSampleLaps.Average() - _damageReferenceLapSeconds);
+    }
+
+    private static bool ValidLap(float seconds) => seconds is >= 10 and <= 900;
 
     /// <summary>
     /// Gives a radio request the newest independently-read field frame. Physics
