@@ -9,6 +9,10 @@ public static class RaceEngineerFacts
     public static string? TryAnswer(string question, TelemetrySnapshot t)
     {
         var q = Normalize(question);
+        if (ContainsAny(q, "mi senti", "mi ascolti", "riesci a sentirmi"))
+            return "Sì, ti sento.";
+        if (ContainsAny(q, "siamo pronti", "pronti per la gara", "possiamo partire", "si puo partire"))
+            return t.Connected ? "Sì, telemetria collegata. Pronto per la gara." : "Sì. Avvia la sessione per collegare la telemetria.";
         if (ContainsAny(q, "danno", "danni", "dannegg", "damage", "rotto", "rotta"))
             return Damage(t);
         if (ContainsAny(q, "gomma", "gomme", "pneumatic", "usura", "temperatura gomme", "pressione gomme"))
@@ -37,7 +41,7 @@ public static class RaceEngineerFacts
         var max = percent.Max();
         if (max < 5f) return "Nessun danno rilevante.";
 
-        var severity = max < 15f ? "lievi" : max < 40f ? "moderati" : "importanti";
+        var severity = max < 15f ? "lieve" : max < 40f ? "moderato" : "importante";
         var areas = new[] { "anteriore", "posteriore", "lato sinistro", "lato destro" };
         var worst = Array.IndexOf(percent, max);
         var area = worst >= 0 && worst < areas.Length ? areas[worst] : "carrozzeria";
@@ -45,7 +49,7 @@ public static class RaceEngineerFacts
             ? t.LastLapTimeSeconds - t.BestLapTimeSeconds
             : 0;
         return paceLoss > 0.05f
-            ? $"Danno {severity} {area}. Ritmo attuale: +{paceLoss:0.0} s al giro."
+            ? $"Danno {severity} {area}. Ultimo giro: +{paceLoss:0.0} s dal tuo migliore."
             : $"Danno {severity} {area}. Perdita sul giro non ancora misurabile.";
     }
 

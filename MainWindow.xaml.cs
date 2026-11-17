@@ -198,8 +198,6 @@ public partial class MainWindow : Window
         var telemetry = GetUsableSnapshot();
         var factualAnswer = RaceEngineerControl.TryApply(routedQuestion, _settings, _voice)
             ?? RaceEngineerFacts.TryAnswer(routedQuestion, telemetry);
-        if (fromRadio && factualAnswer is null)
-            factualAnswer = "Non ho capito. Ripeti soltanto: danni, davanti, dietro, gomme, carburante o ultimo giro.";
         if (factualAnswer is not null)
         {
             _sending = true;
@@ -216,7 +214,7 @@ public partial class MainWindow : Window
         ChatHistory.ScrollToEnd();
         try
         {
-            var answer = await _ollama.AskAsync(_settings.OllamaUrl, _settings.Model, question, telemetry);
+            var answer = await _ollama.AskAsync(_settings.OllamaUrl, _settings.Model, question, telemetry, radio: fromRadio);
             ChatHistory.AppendText(answer + "\n");
             if (_settings.SpeakReplies) _voice.Speak(answer);
         }

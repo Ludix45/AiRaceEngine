@@ -7,7 +7,7 @@ Assistente Windows per Assetto Corsa: chat locale con Ollama, riconoscimento PTT
 - Windows 10/11 x64.
 - Assetto Corsa per la telemetria di gioco e l’app Python in pista.
 - Ollama per le risposte generative; il modello è scaricabile dalle impostazioni dell’app.
-- Connessione Internet solo al primo avvio Whisper, per scaricare il modello vocale da circa 77 MB. In seguito la trascrizione è locale.
+- Connessione Internet solo al primo avvio Whisper, per scaricare il modello vocale scelto (circa 142 MB per **Accurato**, 77 MB per **Veloce**). In seguito la trascrizione è locale.
 - .NET 10 SDK solo se si compila dai sorgenti. Il pacchetto Release è autonomo.
 
 ## Installazione del pacchetto Windows
@@ -23,7 +23,7 @@ Assistente Windows per Assetto Corsa: chat locale con Ollama, riconoscimento PTT
    Esegui il comando dalla cartella della repository. Sostituisci il percorso con quello di Assetto Corsa sul PC. Lo script salva una copia di `python.ini`, attiva l’app senza cancellare le altre impostazioni e installa il file in `apps\python\AiRaceEngineer`.
 
 4. Riavvia Assetto Corsa, avvia una sessione e apri **AiRaceEngineer** dal selettore delle app in pista.
-5. Tieni Ollama avviato. Al primo uso PTT l’app scarica e verifica Whisper tiny. Il file vocale viene conservato in `%OLLAMA_MODELS%\AiRaceEngineer\Whisper`; senza la variabile, usa `Documenti\AiRaceEngineer\Models\AiRaceEngineer\Whisper`. I modelli conversazionali di Ollama restano nella cartella configurata in Ollama.
+5. Tieni Ollama avviato. Al primo uso PTT l’app scarica e verifica il modello Whisper scelto nelle impostazioni. Il file vocale viene conservato in `%OLLAMA_MODELS%\AiRaceEngineer\Whisper`; senza la variabile, usa `Documenti\AiRaceEngineer\Models\AiRaceEngineer\Whisper`. I modelli conversazionali di Ollama restano nella cartella configurata in Ollama.
 
 ## Build da sorgente
 
@@ -72,7 +72,7 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 - Coach curva che conserva il giro personale più veloce per auto e pista, con bip distinti di frenata e riapertura del gas dal giro successivo.
 - Voce neurale italiana locale facoltativa: si scarica una volta insieme al motore Piper e viene salvata accanto ai modelli locali. Nelle impostazioni puoi scegliere anche una voce Windows e regolare la velocità fra 75% e 135%.
 - Comandi radio: “parla più veloce”, “parla più piano”, “dimmi i distacchi”, “non dirmi i distacchi”, “ogni giro dimmi il carburante”, “box al giro 12”, “annulla piano box”, “non parlare per il prossimo giro”, “ingegnere on/off”.
-- La radio corregge le trascrizioni vocali comuni prima di rispondere: ad esempio “Dania macchina” viene interpretato come danni alla macchina e “ciao davanti” come chi hai davanti. Se una frase non corrisponde a un comando di gara, chiede di ripeterla invece di inventare consigli generici.
+- La radio corregge le trascrizioni vocali comuni prima di rispondere: ad esempio “Dania macchina” viene interpretato come danni alla macchina, “ciao davanti” come chi hai davanti e “go me” come gomme. La correzione non è un menu chiuso: per le altre domande passa la frase, con il contesto di gara, al modello locale e richiede una risposta radio breve.
 - Opzione finestra sempre in primo piano.
 - Pulsante per scaricare il modello configurato attraverso l’API locale Ollama.
 
