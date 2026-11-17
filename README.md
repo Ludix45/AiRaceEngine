@@ -69,11 +69,12 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 - Suggerimenti di assetto generici dal modello locale.
 - Registrazione CSV della telemetria in Documenti\AiRaceEngineer\Sessions.
 - Push-to-talk con F8 o pulsante Xbox Menu/Start su tutti gli slot XInput, con bip distinti alla pressione e al rilascio; l’audio viene acquisito dal microfono predefinito e trascritto localmente da Whisper. Il profilo predefinito **Accurato** usa Whisper base (142 MB); il profilo **Veloce** usa Whisper tiny (77 MB).
-- Coach curva che conserva il giro personale più veloce per auto e pista, con bip distinti di frenata e riapertura del gas dal giro successivo.
+- Coach curva che conserva il giro personale più veloce per auto e pista. Nelle impostazioni puoi attivare indipendentemente il bip di frenata e quello di riapertura gas, oppure disattivarli entrambi; l’anticipo è regolabile da **sul punto** a **1 secondo prima**.
 - Voce neurale italiana locale facoltativa: si scarica una volta insieme al motore Piper e viene salvata accanto ai modelli locali. Nelle impostazioni puoi scegliere anche una voce Windows e regolare la velocità fra 75% e 135%.
 - Comandi radio: “parla più veloce”, “parla più piano”, “dimmi i distacchi”, “non dirmi i distacchi”, “ogni giro dimmi il carburante”, “box al giro 12”, “annulla piano box”, “non parlare per il prossimo giro”, “ingegnere on/off”.
 - La radio corregge le trascrizioni vocali comuni prima di rispondere: ad esempio “Dania macchina” viene interpretato come danni alla macchina, “ciao davanti” come chi hai davanti e “go me” come gomme. La correzione non è un menu chiuso: per le altre domande passa la frase, con il contesto di gara, al modello locale e richiede una risposta radio breve.
 - Opzione finestra sempre in primo piano.
+- Al primo avvio chiede la lingua dell’interfaccia (**Italiano** o **English**); la scelta resta modificabile nelle impostazioni e orienta anche le risposte generative del modello locale.
 - Pulsante per scaricare il modello configurato attraverso l’API locale Ollama.
 
 ## Avvio

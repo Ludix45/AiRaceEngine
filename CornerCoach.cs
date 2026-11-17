@@ -33,7 +33,7 @@ public sealed class CornerCoach
     private float _previousPosition = -1;
     private string? _lastStatus;
 
-    public CornerCoachUpdate Update(TelemetrySnapshot t)
+    public CornerCoachUpdate Update(TelemetrySnapshot t, bool brakeBeeps, bool throttleBeeps, int leadMilliseconds)
     {
         lock (_gate)
         {
@@ -79,14 +79,22 @@ public sealed class CornerCoach
             var cues = new List<CornerCueType>();
             if (_reference.Brake.Count + _reference.Throttle.Count > 0 && t.TrackLengthMeters > 0 && t.SpeedKmh > 30)
             {
-                var leadMeters = Math.Max(16, t.SpeedKmh / 3.6f * 0.75f);
-                AddCues(_reference.Brake, "B", CornerCueType.Brake, position, t.TrackLengthMeters, leadMeters, cues);
-                AddCues(_reference.Throttle, "T", CornerCueType.Throttle, position, t.TrackLengthMeters, leadMeters, cues);
+                var leadMeters = Math.Max(0, t.SpeedKmh / 3.6f * Math.Clamp(leadMilliseconds, 0, 1500) / 1000f);
+                if (brakeBeeps)
+                    AddCues(_reference.Brake, "B", CornerCueType.Brake, position, t.TrackLengthMeters, leadMeters, cues);
+                if (throttleBeeps)
+                    AddCues(_reference.Throttle, "T", CornerCueType.Throttle, position, t.TrackLengthMeters, leadMeters, cues);
             }
 
+            var advance = leadMilliseconds <= 0 ? AppLanguage.IsEnglish ? "at each marker" : "sui punti"
+                : AppLanguage.IsEnglish ? $"{leadMilliseconds / 1000d:0.##} s before each marker" : $"{leadMilliseconds / 1000d:0.##} s prima dei punti";
             var status = _reference.Brake.Count + _reference.Throttle.Count > 0
-                ? $"Coach attivo · riferimento personale {FormatLap(_reference.LapSeconds)} · {_reference.Brake.Count} frenate e {_reference.Throttle.Count} riaperture. Bip circa 0,75 s prima dei punti del tuo giro migliore."
-                : $"Coach curva in apprendimento · completa un giro su {t.Track}: memorizzerò i tuoi punti di frenata e riapertura del gas.";
+                ? AppLanguage.IsEnglish
+                    ? $"Coach active · personal reference {FormatLap(_reference.LapSeconds)} · {_reference.Brake.Count} braking and {_reference.Throttle.Count} throttle markers. Beeps {advance}."
+                    : $"Coach attivo · riferimento personale {FormatLap(_reference.LapSeconds)} · {_reference.Brake.Count} frenate e {_reference.Throttle.Count} riaperture. Bip {advance} del tuo giro migliore."
+                : AppLanguage.IsEnglish
+                    ? $"Corner coach learning · complete a lap at {t.Track}: braking and throttle markers will be saved."
+                    : $"Coach curva in apprendimento · completa un giro su {t.Track}: memorizzerò i tuoi punti di frenata e riapertura del gas.";
             var changed = !string.Equals(status, _lastStatus, StringComparison.Ordinal);
             _lastStatus = status;
             _previousPosition = position;
@@ -139,7 +147,10 @@ public sealed class CornerCoach
             var marker = markers[i];
             var distance = (marker - position + 1f) % 1f * trackLength;
             var id = $"{prefix}{i}";
-            if (distance <= leadMeters && distance > 1.5f && _cuedThisLap.Add(id)) cues.Add(type);
+            // At an exact marker a frame cannot have exactly zero distance;
+            // a tight 3 m window produces the cue on that point in practice.
+            var triggerDistance = Math.Max(leadMeters, 3f);
+            if (distance <= triggerDistance && distance > 0.4f && _cuedThisLap.Add(id)) cues.Add(type);
         }
     }
 

@@ -113,8 +113,13 @@
                         <TextBlock x:Name="SettingsStatus" Text="Il modello rimane nella cartella configurata in Ollama." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,13,0,0"/>
                         <ProgressBar x:Name="PullProgress" Height="7" Margin="0,9,0,0" Minimum="0" Maximum="100"/>
                     </StackPanel></Border>
-                    <Border Grid.Column="1" Background="{StaticResource Panel}" CornerRadius="9" Padding="20"><StackPanel>
+                    <Border Grid.Column="1" Background="{StaticResource Panel}" CornerRadius="9" Padding="20"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
                         <TextBlock Text="Voce, radio e controller" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                        <TextBlock Text="Lingua / Language" Foreground="{StaticResource Muted}"/>
+                        <ComboBox x:Name="LanguageCombo" Margin="0,4,0,12" SelectionChanged="Language_Changed">
+                            <ComboBoxItem Tag="it">Italiano</ComboBoxItem>
+                            <ComboBoxItem Tag="en">English</ComboBoxItem>
+                        </ComboBox>
                         <TextBlock Text="Riconoscimento vocale" Foreground="{StaticResource Muted}"/>
                         <ComboBox x:Name="RecognitionModelCombo" Margin="0,4,0,10" SelectionChanged="RecognitionModel_Changed">
                             <ComboBoxItem Tag="base">Accurato · Whisper base · 142 MB</ComboBoxItem>
@@ -131,10 +136,19 @@
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Button Content="Prepara voce neurale" Click="PrepareNaturalVoice_Click"/><Button Content="Ascolta prova" Margin="8,0,0,0" Click="TestVoice_Click"/></StackPanel>
                         <TextBlock x:Name="OutputVoiceStatus" Text="Voce italiana di Windows attiva." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,8,0,12"/>
                         <CheckBox x:Name="RaceEngineerCheck" Content="Ingegnere di gara attivo" Foreground="#EAF0F3" Checked="RaceEngineerCheck_Changed" Unchecked="RaceEngineerCheck_Changed" Margin="0,0,0,10"/>
+                        <Separator Margin="0,4,0,12" Background="#35424B"/>
+                        <TextBlock Text="Coach curva · beep" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="CoachBrakeBeepCheck" Content="Bip per frenata" Foreground="#EAF0F3" Checked="CoachBeeps_Changed" Unchecked="CoachBeeps_Changed" Margin="0,0,0,5"/>
+                        <CheckBox x:Name="CoachThrottleBeepCheck" Content="Bip per riapertura gas" Foreground="#EAF0F3" Checked="CoachBeeps_Changed" Unchecked="CoachBeeps_Changed" Margin="0,0,0,10"/>
+                        <Grid Margin="0,0,0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="Anticipo beep" Foreground="{StaticResource Muted}"/>
+                            <TextBlock x:Name="CoachLeadText" Grid.Column="1" Foreground="{StaticResource Lime}"/>
+                        </Grid>
+                        <Slider x:Name="CoachLeadSlider" Minimum="0" Maximum="1000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="CoachLeadSlider_ValueChanged" Margin="0,0,0,12"/>
                         <TextBlock Text="Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; il riconoscimento usa il microfono predefinito di Windows senza inviare l’audio a un servizio cloud." TextWrapping="Wrap"/>
                         <TextBlock x:Name="VoiceStatus" Text="Riconoscimento vocale italiano: verifica in corso…" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,12,0,0"/>
                         <TextBlock Text="Per visualizzare il pannello sopra AC, usa modalità finestra senza bordi. L’overlay non modifica i banner o le regole del gioco." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,18,0,0"/>
-                    </StackPanel></Border>
+                    </StackPanel></ScrollViewer></Border>
                 </Grid>
             </TabItem>
         </TabControl>

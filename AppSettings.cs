@@ -20,6 +20,12 @@ public sealed class AppSettings
     public string OutputVoice { get; set; } = "";
     public bool UseNaturalVoice { get; set; } = true;
     public string SpeechRecognitionModel { get; set; } = "base";
+    public bool CoachBrakeBeeps { get; set; } = true;
+    public bool CoachThrottleBeeps { get; set; } = true;
+    /// <summary>Milliseconds before a learned marker; zero means at the marker.</summary>
+    public int CoachCueLeadMilliseconds { get; set; } = 750;
+    /// <summary>Empty means the language has not been chosen yet.</summary>
+    public string Language { get; set; } = "";
 
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

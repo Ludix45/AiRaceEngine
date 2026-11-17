@@ -36,6 +36,15 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        if (string.IsNullOrWhiteSpace(_settings.Language))
+        {
+            var italian = MessageBox.Show(
+                "Scegli la lingua / Choose language.\n\nSì = Italiano\nNo = English",
+                "AI Race Engineer", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+            _settings.Language = italian ? "it" : "en";
+            _settings.Save();
+        }
+        AppLanguage.Current = _settings.Language;
         OllamaUrlInput.Text = _settings.OllamaUrl;
         ModelInput.Text = _settings.Model;
         RecognitionModelCombo.SelectedIndex = _settings.SpeechRecognitionModel.Equals("tiny", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
@@ -48,6 +57,11 @@ public partial class MainWindow : Window
         SpeechSpeedText.Text = $"{_settings.SpeechRatePercent}%";
         NaturalVoiceCheck.IsChecked = _settings.UseNaturalVoice;
         RaceEngineerCheck.IsChecked = _settings.RaceEngineerEnabled;
+        CoachBrakeBeepCheck.IsChecked = _settings.CoachBrakeBeeps;
+        CoachThrottleBeepCheck.IsChecked = _settings.CoachThrottleBeeps;
+        CoachLeadSlider.Value = Math.Clamp(_settings.CoachCueLeadMilliseconds, 0, 1000);
+        CoachLeadText.Text = FormatCoachLead(_settings.CoachCueLeadMilliseconds);
+        LanguageCombo.SelectedIndex = AppLanguage.IsEnglish ? 1 : 0;
         _voice.ConfigureOutput(_settings.OutputVoice, _settings.SpeechRatePercent, _settings.UseNaturalVoice);
         OutputVoiceStatus.Text = _voice.OutputVoiceStatus;
         ModelFolderText.Text = $"Cartella modelli Ollama: {Environment.GetEnvironmentVariable("OLLAMA_MODELS") ?? @"%USERPROFILE%\.ollama\models"}";
@@ -63,6 +77,7 @@ public partial class MainWindow : Window
         _refresh.Tick += RefreshUi;
         _refresh.Start();
         Closed += OnClosed;
+        Loaded += (_, _) => ApplyLanguageToVisualTree(this);
         _ = CheckOllamaAsync();
         _ = _voice.InitializeAsync(_settings.SpeechRecognitionModel);
         if (_settings.UseNaturalVoice) _ = _voice.PrepareNaturalVoiceAsync();
@@ -72,7 +87,7 @@ public partial class MainWindow : Window
 
     private void OnTelemetryUpdated(TelemetrySnapshot snapshot)
     {
-        var coach = _coach.Update(snapshot);
+        var coach = _coach.Update(snapshot, _settings.CoachBrakeBeeps, _settings.CoachThrottleBeeps, _settings.CoachCueLeadMilliseconds);
         if (coach.Status is not null) _coachStatus = coach.Status;
         foreach (var cue in coach.Cues)
         {
@@ -375,6 +390,46 @@ public partial class MainWindow : Window
         _settings.Save();
     }
 
+    private void CoachBeeps_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.CoachBrakeBeeps = CoachBrakeBeepCheck.IsChecked == true;
+        _settings.CoachThrottleBeeps = CoachThrottleBeepCheck.IsChecked == true;
+        _settings.Save();
+    }
+
+    private void CoachLeadSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!IsLoaded) return;
+        _settings.CoachCueLeadMilliseconds = (int)Math.Round(CoachLeadSlider.Value);
+        CoachLeadText.Text = FormatCoachLead(_settings.CoachCueLeadMilliseconds);
+        _settings.Save();
+    }
+
+    private void Language_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || LanguageCombo.SelectedItem is not ComboBoxItem selected) return;
+        _settings.Language = selected.Tag as string ?? "it";
+        AppLanguage.Current = _settings.Language;
+        _settings.Save();
+        ApplyLanguageToVisualTree(this);
+    }
+
+    private static string FormatCoachLead(int milliseconds) => milliseconds <= 0
+        ? AppLanguage.IsEnglish ? "At marker" : "Sul punto"
+        : AppLanguage.IsEnglish ? $"{milliseconds / 1000d:0.##} s early" : $"{milliseconds / 1000d:0.##} s prima";
+
+    private static void ApplyLanguageToVisualTree(DependencyObject root)
+    {
+        if (root is TextBlock textBlock) textBlock.Text = AppLanguage.TranslateStatic(textBlock.Text);
+        if (root is ContentControl contentControl && contentControl.Content is string content)
+            contentControl.Content = AppLanguage.TranslateStatic(content);
+        if (root is HeaderedContentControl headeredControl && headeredControl.Header is string header)
+            headeredControl.Header = AppLanguage.TranslateStatic(header);
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            ApplyLanguageToVisualTree(VisualTreeHelper.GetChild(root, i));
+    }
+
     private void ApplyOutputVoiceSettings()
     {
         _voice.ConfigureOutput(_settings.OutputVoice, _settings.SpeechRatePercent, _settings.UseNaturalVoice);
@@ -446,6 +501,10 @@ public partial class MainWindow : Window
         _settings.SpeechRatePercent = (int)Math.Round(SpeechSpeedSlider.Value);
         _settings.UseNaturalVoice = NaturalVoiceCheck.IsChecked == true;
         _settings.RaceEngineerEnabled = RaceEngineerCheck.IsChecked == true;
+        _settings.CoachBrakeBeeps = CoachBrakeBeepCheck.IsChecked == true;
+        _settings.CoachThrottleBeeps = CoachThrottleBeepCheck.IsChecked == true;
+        _settings.CoachCueLeadMilliseconds = (int)Math.Round(CoachLeadSlider.Value);
+        _settings.Language = LanguageCombo.SelectedItem is ComboBoxItem language ? language.Tag as string ?? "it" : _settings.Language;
         _voice.ConfigureOutput(_settings.OutputVoice, _settings.SpeechRatePercent, _settings.UseNaturalVoice);
         _settings.Save();
         SettingsStatus.Text = "Impostazioni salvate.";
