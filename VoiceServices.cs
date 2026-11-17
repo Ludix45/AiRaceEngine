@@ -1,4 +1,6 @@
 using System.IO;
+using System.IO.Compression;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
@@ -12,12 +14,16 @@ namespace AiRaceEngineer;
 
 public sealed class VoiceService : IDisposable
 {
-    private const string ModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
+    private const string WhisperModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
     private const string ModelSha256 = "BE07E048E1E599AD46341C8D2A135645097A538221678B7ACDD1B1919C6E1B21";
+    private const string PiperArchiveUrl = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
+    private const string PiperModelUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/paola/medium/it_IT-paola-medium.onnx?download=true";
+    private const string PiperConfigUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/paola/medium/it_IT-paola-medium.onnx.json?download=true";
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
     private readonly SpeechSynthesizer _synth = new();
     private readonly object _captureGate = new();
     private readonly SemaphoreSlim _transcriptionGate = new(1, 1);
+    private readonly SemaphoreSlim _speechGate = new(1, 1);
     private MemoryStream? _recording;
     private WasapiCapture? _capture;
     private WaveFormat? _recordingFormat;
@@ -25,12 +31,24 @@ public sealed class VoiceService : IDisposable
     private WhisperFactory? _whisperFactory;
     private WhisperProcessor? _whisperProcessor;
     private Task? _initializing;
+    private Task? _naturalVoiceInitializing;
+    private string? _piperExecutable;
+    private string? _piperModel;
+    private bool _naturalVoiceReady;
+    private bool _useNaturalVoice = true;
+    private int _speechRatePercent = 100;
     private string _status = "Riconoscimento Whisper locale da inizializzare.";
+    private string _outputVoiceStatus = "Voce italiana di Windows attiva.";
 
     public event Action<string>? Recognized;
     public event Action<string>? Diagnostic;
     public event Action<string>? StatusChanged;
+    public event Action<string>? OutputVoiceStatusChanged;
     public string Status => _status;
+    public string OutputVoiceStatus => _outputVoiceStatus;
+    public IReadOnlyList<string> InstalledItalianVoices => _synth.GetInstalledVoices()
+        .Where(v => v.Enabled && v.VoiceInfo.Culture.Name.StartsWith("it", StringComparison.OrdinalIgnoreCase))
+        .Select(v => v.VoiceInfo.Name).ToArray();
     public int LastAudioLevel { get; private set; }
     public DateTime LastAudioAt { get; private set; } = DateTime.MinValue;
 
@@ -49,6 +67,32 @@ public sealed class VoiceService : IDisposable
             }
         }
         catch (Exception ex) { SetStatus($"Voce in uscita non disponibile: {ex.Message}"); }
+    }
+
+    public void ConfigureOutput(string? voiceName, int ratePercent, bool useNaturalVoice)
+    {
+        _speechRatePercent = Math.Clamp(ratePercent, 75, 135);
+        _useNaturalVoice = useNaturalVoice;
+        try
+        {
+            var selected = InstalledItalianVoices.FirstOrDefault(v => string.Equals(v, voiceName, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(selected)) _synth.SelectVoice(selected);
+            _synth.Rate = Math.Clamp((int)Math.Round((_speechRatePercent - 100) / 5d), -10, 10);
+        }
+        catch (Exception ex) { SetOutputVoiceStatus($"Voce Windows non configurata: {ex.Message}"); return; }
+        SetOutputVoiceStatus(_useNaturalVoice
+            ? (_naturalVoiceReady ? $"Voce neurale italiana pronta · {_speechRatePercent}%" : "Voce neurale italiana in preparazione; per ora uso la voce Windows.")
+            : $"Voce Windows selezionata · {_speechRatePercent}%");
+    }
+
+    public Task PrepareNaturalVoiceAsync()
+    {
+        lock (_captureGate)
+        {
+            if (_naturalVoiceReady) return Task.CompletedTask;
+            if (_naturalVoiceInitializing is { IsCompleted: false }) return _naturalVoiceInitializing;
+            return _naturalVoiceInitializing = PrepareNaturalVoiceCoreAsync();
+        }
     }
 
     public Task InitializeAsync()
@@ -90,7 +134,7 @@ public sealed class VoiceService : IDisposable
         SetStatus("Download modello vocale Whisper · 77 MB · nella cartella modelli Ollama…");
         try
         {
-            using var response = await Http.GetAsync(ModelUrl, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            using var response = await Http.GetAsync(WhisperModelUrl, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             var total = response.Content.Headers.ContentLength;
             await using var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -345,13 +389,158 @@ public sealed class VoiceService : IDisposable
 
     public void Speak(string text)
     {
-        if (!string.IsNullOrWhiteSpace(text)) _synth.SpeakAsync(text);
+        if (string.IsNullOrWhiteSpace(text)) return;
+        _ = SpeakAsync(text);
+    }
+
+    private async Task SpeakAsync(string text)
+    {
+        await _speechGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_useNaturalVoice)
+            {
+                if (!_naturalVoiceReady)
+                {
+                    _ = PrepareNaturalVoiceAsync();
+                    SpeakWithWindowsVoice(text);
+                    return;
+                }
+                await SpeakWithPiperAsync(text).ConfigureAwait(false);
+                return;
+            }
+            SpeakWithWindowsVoice(text);
+        }
+        catch (Exception ex)
+        {
+            SetOutputVoiceStatus($"Voce neurale non disponibile; uso la voce Windows. {ex.Message}");
+            SpeakWithWindowsVoice(text);
+        }
+        finally { _speechGate.Release(); }
+    }
+
+    private void SpeakWithWindowsVoice(string text)
+    {
+        try { _synth.SpeakAsyncCancelAll(); _synth.SpeakAsync(text); }
+        catch { }
+    }
+
+    private async Task PrepareNaturalVoiceCoreAsync()
+    {
+        try
+        {
+            SetOutputVoiceStatus("Download voce neurale italiana in corso: circa 100 MB, una sola volta.");
+            var root = GetNaturalVoiceRoot();
+            Directory.CreateDirectory(root);
+            var model = Path.Combine(root, "it_IT-paola-medium.onnx");
+            var config = model + ".json";
+            if (!File.Exists(model)) await DownloadFileAsync(PiperModelUrl, model).ConfigureAwait(false);
+            if (!File.Exists(config)) await DownloadFileAsync(PiperConfigUrl, config).ConfigureAwait(false);
+
+            var engineRoot = Path.Combine(root, "piper");
+            var executable = Directory.Exists(engineRoot)
+                ? Directory.GetFiles(engineRoot, "piper.exe", SearchOption.AllDirectories).FirstOrDefault()
+                : null;
+            if (string.IsNullOrWhiteSpace(executable))
+            {
+                var archive = Path.Combine(root, "piper-windows-amd64.zip");
+                if (!File.Exists(archive)) await DownloadFileAsync(PiperArchiveUrl, archive).ConfigureAwait(false);
+                ZipFile.ExtractToDirectory(archive, root, overwriteFiles: true);
+                executable = Directory.GetFiles(root, "piper.exe", SearchOption.AllDirectories).FirstOrDefault();
+            }
+            if (string.IsNullOrWhiteSpace(executable)) throw new FileNotFoundException("Piper non trovato dopo il download.");
+            _piperExecutable = executable;
+            _piperModel = model;
+            _naturalVoiceReady = true;
+            SetOutputVoiceStatus($"Voce neurale italiana pronta · {_speechRatePercent}% · locale.");
+        }
+        catch (Exception ex)
+        {
+            _naturalVoiceReady = false;
+            SetOutputVoiceStatus($"Voce neurale non pronta: {ex.Message}");
+        }
+    }
+
+    private static string GetNaturalVoiceRoot()
+    {
+        var root = Environment.GetEnvironmentVariable("OLLAMA_MODELS");
+        if (string.IsNullOrWhiteSpace(root))
+            root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AiRaceEngineer", "Models");
+        return Path.Combine(root, "AiRaceEngineer", "Piper");
+    }
+
+    private static async Task DownloadFileAsync(string url, string path)
+    {
+        var temporary = path + ".download";
+        try
+        {
+            using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            await using var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            await using var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 131072, true);
+            await input.CopyToAsync(output).ConfigureAwait(false);
+            await output.FlushAsync().ConfigureAwait(false);
+            File.Move(temporary, path, true);
+        }
+        catch
+        {
+            try { File.Delete(temporary); } catch { }
+            throw;
+        }
+    }
+
+    private async Task SpeakWithPiperAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(_piperExecutable) || string.IsNullOrWhiteSpace(_piperModel))
+            throw new InvalidOperationException("Motore vocale non pronto.");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"AiRaceEngineer-{Guid.NewGuid():N}.wav");
+        try
+        {
+            var start = new ProcessStartInfo(_piperExecutable)
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(_piperExecutable)!
+            };
+            start.ArgumentList.Add("--model");
+            start.ArgumentList.Add(_piperModel);
+            start.ArgumentList.Add("--output_file");
+            start.ArgumentList.Add(outputPath);
+            start.ArgumentList.Add("--length_scale");
+            start.ArgumentList.Add((100d / _speechRatePercent).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Impossibile avviare il motore vocale.");
+            await process.StandardInput.WriteLineAsync(text).ConfigureAwait(false);
+            process.StandardInput.Close();
+            var errors = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            if (process.ExitCode != 0 || !File.Exists(outputPath))
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(errors) ? "Sintesi vocale non riuscita." : errors.Trim());
+
+            using var reader = new AudioFileReader(outputPath);
+            using var output = new WaveOutEvent();
+            output.Init(reader);
+            output.Play();
+            while (output.PlaybackState == PlaybackState.Playing)
+                await Task.Delay(20).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(outputPath); } catch { }
+        }
     }
 
     private void SetStatus(string status)
     {
         _status = status;
         StatusChanged?.Invoke(status);
+    }
+
+    private void SetOutputVoiceStatus(string status)
+    {
+        _outputVoiceStatus = status;
+        OutputVoiceStatusChanged?.Invoke(status);
     }
 
     public void Dispose()
@@ -364,6 +553,7 @@ public sealed class VoiceService : IDisposable
         _whisperProcessor?.Dispose();
         _whisperFactory?.Dispose();
         _transcriptionGate.Dispose();
+        _speechGate.Dispose();
         _synth.Dispose();
     }
 }

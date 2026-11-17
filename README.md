@@ -63,13 +63,15 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 
 - Lettura dei blocchi Shared Memory di Assetto Corsa: dati fisici, giri, posizione, pit lane, penalità e bandiera corrente. Legge inoltre il campo completo (nomi, posizioni, giri, spline, velocità, pit, input e tempi) da una piccola app Python AC installata in `apps/python/AiRaceEngineer`.
 - Risposte radio in italiano con valutazioni leggibili di danni, gomme, carburante e distacchi; il riepilogo gara mette in evidenza anche penalità, bandiere e cali di ritmo quando disponibili.
+- Report automatico a ogni giro valido, con confronto al riferimento personale, chiamate di gomme/carburante e strategia box.
 - Avvisi locali per bandiere/penalità del gioco, ingresso e uscita box, consumo carburante, usura gomme e possibile incidente.
 - Stima carburante/usura e consiglio di pit stop.
 - Suggerimenti di assetto generici dal modello locale.
 - Registrazione CSV della telemetria in Documenti\AiRaceEngineer\Sessions.
 - Push-to-talk con F8 o pulsante Xbox Menu/Start su tutti gli slot XInput, con bip distinti alla pressione e al rilascio; l’audio viene acquisito dal microfono predefinito e trascritto in italiano da Whisper tiny in locale.
-- Coach curva che memorizza frenate e riaperture del gas dai giri completati e li richiama dal giro successivo con toni distinti. Il primo giro serve per imparare.
-- Selezione prioritaria della voce italiana Microsoft Elsa, se installata, con velocità leggermente ridotta.
+- Coach curva che conserva il giro personale più veloce per auto e pista, con bip distinti di frenata e riapertura del gas dal giro successivo.
+- Voce neurale italiana locale facoltativa: si scarica una volta insieme al motore Piper e viene salvata accanto ai modelli locali. Nelle impostazioni puoi scegliere anche una voce Windows e regolare la velocità fra 75% e 135%.
+- Comandi radio: “parla più veloce”, “parla più piano”, “dimmi i distacchi”, “non dirmi i distacchi”, “ogni giro dimmi il carburante”, “box al giro 12”, “annulla piano box”, “non parlare per il prossimo giro”, “ingegnere on/off”.
 - Opzione finestra sempre in primo piano.
 - Pulsante per scaricare il modello configurato attraverso l’API locale Ollama.
 

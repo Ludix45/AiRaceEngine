@@ -13,6 +13,7 @@ public sealed class CornerCoach
     {
         public List<float> Brake { get; set; } = [];
         public List<float> Throttle { get; set; } = [];
+        public float LapSeconds { get; set; }
     }
 
     private static readonly string MapFile = Path.Combine(
@@ -46,7 +47,7 @@ public sealed class CornerCoach
             if (_lastLap < 0) _lastLap = t.CompletedLaps;
             else if (t.CompletedLaps > _lastLap)
             {
-                SaveCompletedLap();
+                SaveCompletedLap(t.LastLapTimeSeconds);
                 _lastLap = t.CompletedLaps;
                 _lapBrake.Clear();
                 _lapThrottle.Clear();
@@ -84,7 +85,7 @@ public sealed class CornerCoach
             }
 
             var status = _reference.Brake.Count + _reference.Throttle.Count > 0
-                ? $"Coach attivo · {_reference.Brake.Count} frenate e {_reference.Throttle.Count} riaperture imparate su {t.Track}. Bip circa 0,75 s prima dei tuoi punti."
+                ? $"Coach attivo · riferimento personale {FormatLap(_reference.LapSeconds)} · {_reference.Brake.Count} frenate e {_reference.Throttle.Count} riaperture. Bip circa 0,75 s prima dei punti del tuo giro migliore."
                 : $"Coach curva in apprendimento · completa un giro su {t.Track}: memorizzerò i tuoi punti di frenata e riapertura del gas.";
             var changed = !string.Equals(status, _lastStatus, StringComparison.Ordinal);
             _lastStatus = status;
@@ -109,10 +110,17 @@ public sealed class CornerCoach
         _brakedForCorner = false; _lastStatus = null;
     }
 
-    private void SaveCompletedLap()
+    private void SaveCompletedLap(float lapSeconds)
     {
         if (_lapBrake.Count == 0 && _lapThrottle.Count == 0) return;
-        _reference = new TrackMap { Brake = _lapBrake.Distinct().Order().ToList(), Throttle = _lapThrottle.Distinct().Order().ToList() };
+        if (lapSeconds is < 10 or > 900) return;
+        if (_reference.LapSeconds is >= 10 and <= 900 && lapSeconds >= _reference.LapSeconds - 0.02f) return;
+        _reference = new TrackMap
+        {
+            Brake = _lapBrake.Distinct().Order().ToList(),
+            Throttle = _lapThrottle.Distinct().Order().ToList(),
+            LapSeconds = lapSeconds
+        };
         _maps[_key] = _reference;
         try
         {
@@ -139,4 +147,8 @@ public sealed class CornerCoach
     {
         if (markers.Count == 0 || Math.Abs(markers[^1] - position) > 0.003f) markers.Add(position);
     }
+
+    private static string FormatLap(float seconds) => seconds is >= 10 and <= 900
+        ? TimeSpan.FromSeconds(seconds).ToString(@"m\:ss\.fff")
+        : "in apprendimento";
 }

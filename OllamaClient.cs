@@ -21,7 +21,7 @@ public sealed class OllamaClient
 
     public async Task<string> AskAsync(string baseUrl, string model, string question, TelemetrySnapshot telemetry, CancellationToken ct = default)
     {
-        var system = "Sei l'ingegnere di gara dell'utente. Rispondi in italiano, come una comunicazione radio: breve, chiara e pratica. Spiega cosa significa il dato per la guida e dai al massimo un consiglio concreto. Non elencare valori grezzi o dettagli tecnici che il pilota non può usare. I campi a zero possono indicare dato assente. Non trasformare indice gomme o danni grezzi in percentuali se il contesto non lo dichiara. Per i rivali usa solo FieldCars e presenta distanze/tempi come stime, mai come distacchi ufficiali. Se il dato richiesto manca, dillo senza inventare un'alternativa. Non inventare meteo, bandiere, penalità, nomi, danni o punti di frenata. Per consigli in curva usa solo velocità, frenata, gas, marcia e riferimenti imparati presenti; se manca un giro di riferimento, dillo chiaramente. /no_think";
+        var system = "Sei l'ingegnere di gara dell'utente. Rispondi in italiano come alla radio: apri con la situazione utile, spiega cosa deve fare adesso e fermati. Dai un solo consiglio concreto, leggibile mentre guida. Non dire mai da dove arrivano i dati, non elencare telemetria grezza, indici o campi tecnici. I campi a zero possono indicare un dato assente. Non trasformare indice gomme o danni grezzi in percentuali se il contesto non lo dichiara. Per i rivali usa solo FieldCars e presenta distanze/tempi come stime, mai come distacchi ufficiali. Se manca un dato, dillo in modo semplice e non inventare. Non inventare meteo, bandiere, penalità, nomi, danni o punti di frenata. Per i consigli in curva usa solo il riferimento personale realmente disponibile; se non c'è, chiedi un giro pulito. /no_think";
         var field = telemetry.FieldCars ?? [];
         var context = new
         {
@@ -32,6 +32,7 @@ public sealed class OllamaClient
                 telemetry.SpeedKmh, telemetry.Gear, telemetry.Rpm, telemetry.FuelLitres,
                 telemetry.FuelPerLap, telemetry.TyreCompound, telemetry.TyreWearPercent,
                 telemetry.WearPerLapPercent, telemetry.TyreTempC, telemetry.TyreWearWheels,
+                telemetry.CurrentLapTimeSeconds, telemetry.LastLapTimeSeconds, telemetry.BestLapTimeSeconds,
                 telemetry.TyreWearEstimateWheels, telemetry.TyrePressure, telemetry.TyreCoreTempWheels,
                 telemetry.TyreInnerTemp, telemetry.TyreMidTemp, telemetry.TyreOuterTemp,
                 telemetry.BrakeTemp, telemetry.CarDamage, telemetry.Gas, telemetry.Brake,

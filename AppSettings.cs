@@ -11,6 +11,14 @@ public sealed class AppSettings
     public string PushToTalkKey { get; set; } = "F8";
     public bool XboxMenuPushToTalk { get; set; } = true;
     public bool SpeakReplies { get; set; } = true;
+    public bool RaceEngineerEnabled { get; set; } = true;
+    public bool AnnounceFuelEachLap { get; set; }
+    public bool AnnounceGapsEachLap { get; set; } = true;
+    public int SilentLaps { get; set; }
+    public int PlannedPitLap { get; set; }
+    public int SpeechRatePercent { get; set; } = 100;
+    public string OutputVoice { get; set; } = "";
+    public bool UseNaturalVoice { get; set; } = true;
 
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

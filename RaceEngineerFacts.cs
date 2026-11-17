@@ -17,6 +17,10 @@ public static class RaceEngineerFacts
             return Rivals(t);
         if (ContainsAny(q, "benzina", "carburante", "rifornimento", "pit stop", "sosta", "box"))
             return Fuel(t);
+        if (ContainsAny(q, "ultimo giro", "ultima tornata", "come e andato il giro", "come e andata il giro", "ritmo", "passo gara", "pace"))
+            return LastLap(t);
+        if (ContainsAny(q, "dove perdo", "dove sto perdendo", "come posso migliorare", "come miglioro", "sono lento"))
+            return Improvement(t);
         if (ContainsAny(q, "in generale", "riepilogo", "come va", "come sto", "come sono messo", "situazione gara", "quadro generale", "cosa devo sapere"))
             return Summary(t);
         return null;
@@ -86,6 +90,13 @@ public static class RaceEngineerFacts
         return $"Sei P{t.Position}. {string.Join(" ", parts)}";
     }
 
+    /// <summary>Short wording for automatic end-of-lap radio calls.</summary>
+    public static string GetGapBrief(TelemetrySnapshot t)
+    {
+        var text = Rivals(t);
+        return text.StartsWith("Sei P", StringComparison.Ordinal) ? text : "Distacchi non disponibili.";
+    }
+
     private static string Describe(FieldCar car, float delta, string direction, float trackLength, float playerBestLapSeconds)
     {
         var name = string.IsNullOrWhiteSpace(car.Driver) ? car.Car : car.Driver;
@@ -141,6 +152,32 @@ public static class RaceEngineerFacts
         return result + ".";
     }
 
+    private static string LastLap(TelemetrySnapshot t)
+    {
+        if (t.LastLapTimeSeconds is < 10 or > 900)
+            return "Non ho ancora un giro completo valido da analizzare.";
+        var last = FormatTime(t.LastLapTimeSeconds);
+        if (t.BestLapTimeSeconds is < 10 or > 900)
+            return $"Ultimo giro: {last}. È il primo riferimento valido della sessione.";
+        var delta = t.LastLapTimeSeconds - t.BestLapTimeSeconds;
+        if (delta <= 0.02f) return $"Ultimo giro: {last}, nuovo miglior giro. Mantieni questo ritmo.";
+        if (delta < 0.35f) return $"Ultimo giro: {last}, solo {delta:0.000} s dal tuo migliore. Cerca un giro pulito: il passo c’è.";
+        if (delta < 1.5f) return $"Ultimo giro: {last}, +{delta:0.000} s dal tuo migliore. Punta a pulire frenata e uscita dalle curve: non serve forzare.";
+        return $"Ultimo giro: {last}, +{delta:0.000} s dal tuo migliore. Prima di spingere, controlla gomme e traffico: il calo è significativo.";
+    }
+
+    private static string Improvement(TelemetrySnapshot t)
+    {
+        if (t.LastLapTimeSeconds is < 10 or > 900 || t.BestLapTimeSeconds is < 10 or > 900)
+            return "Completa almeno due giri puliti: confronterò l’ultimo con il tuo riferimento per darti un consiglio utile.";
+        var delta = t.LastLapTimeSeconds - t.BestLapTimeSeconds;
+        if (delta <= 0.15f)
+            return "Sei già vicino al tuo riferimento. Non cercare un punto di frenata più tardi ovunque: concentra la guida su un’uscita pulita dalle curve lente.";
+        if (t.TyreWearPercent >= 45)
+            return $"Sei a +{delta:0.000} s dal tuo migliore e le gomme stanno calando. Gestisci le uscite e prepara la sosta: forzare ora ti farà perdere più tempo.";
+        return $"Sei a +{delta:0.000} s dal tuo migliore. Fai un giro pulito seguendo i bip di frenata e riapertura: il coach usa il tuo miglior giro come riferimento.";
+    }
+
     private static string Summary(TelemetrySnapshot t)
     {
         if (!t.Connected) return "Non ho ancora i dati della sessione. Avvia Assetto Corsa e torna in pista, poi chiedimi di nuovo il riepilogo.";
@@ -182,6 +219,8 @@ public static class RaceEngineerFacts
         if (parts.Count == 0) return "Sei in pista, ma per ora non ho abbastanza dati per un consiglio utile. Fai un giro e richiedi un nuovo riepilogo.";
         return string.Join(" ", parts);
     }
+
+    private static string FormatTime(float seconds) => TimeSpan.FromSeconds(seconds).ToString(seconds >= 3600 ? @"h\:mm\:ss\.fff" : @"m\:ss\.fff", CultureInfo.InvariantCulture);
 
     private static bool ContainsAny(string value, params string[] terms) => terms.Any(value.Contains);
     private static string Normalize(string value)

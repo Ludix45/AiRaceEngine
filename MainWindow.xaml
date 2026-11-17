@@ -66,6 +66,17 @@
                     </Grid>
                 </Grid>
             </TabItem>
+            <TabItem Header="Report sessione">
+                <Grid Margin="8,12,8,8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Report automatico giro per giro" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock Text="Ogni giro valido registra tempo, confronto con il riferimento personale, gomme, carburante e chiamate strategiche." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,12"/>
+                    </StackPanel>
+                    <ListBox Grid.Row="1" x:Name="LapReports" Background="#11171B" BorderThickness="0" Foreground="#D9E1E5" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate><DataTemplate><Border BorderBrush="#2B363E" BorderThickness="0,0,0,1" Padding="12,10"><TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="14"/></Border></DataTemplate></ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
             <TabItem Header="Strategia pit">
                 <Grid Margin="8,12,8,8"><Grid.ColumnDefinitions><ColumnDefinition Width="0.8*"/><ColumnDefinition Width="1.2*"/></Grid.ColumnDefinitions>
                     <Border Background="{StaticResource Panel}" CornerRadius="9" Padding="20" Margin="0,0,10,0"><StackPanel>
@@ -103,7 +114,18 @@
                         <ProgressBar x:Name="PullProgress" Height="7" Margin="0,9,0,0" Minimum="0" Maximum="100"/>
                     </StackPanel></Border>
                     <Border Grid.Column="1" Background="{StaticResource Panel}" CornerRadius="9" Padding="20"><StackPanel>
-                        <TextBlock Text="Voce e controller" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                        <TextBlock Text="Voce, radio e controller" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                        <TextBlock Text="Voce dell’ingegnere" Foreground="{StaticResource Muted}"/>
+                        <ComboBox x:Name="OutputVoiceCombo" Margin="0,4,0,10" SelectionChanged="OutputVoice_Changed"/>
+                        <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="Velocità risposta radio" Foreground="{StaticResource Muted}"/>
+                            <TextBlock x:Name="SpeechSpeedText" Grid.Column="1" Foreground="{StaticResource Lime}"/>
+                        </Grid>
+                        <Slider x:Name="SpeechSpeedSlider" Minimum="75" Maximum="135" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="SpeechSpeedSlider_ValueChanged" Margin="0,0,0,9"/>
+                        <CheckBox x:Name="NaturalVoiceCheck" Content="Voce neurale italiana locale (più fluida)" Foreground="#EAF0F3" Checked="NaturalVoiceCheck_Changed" Unchecked="NaturalVoiceCheck_Changed"/>
+                        <Button Content="Prepara voce neurale" HorizontalAlignment="Left" Margin="0,8,0,0" Click="PrepareNaturalVoice_Click"/>
+                        <TextBlock x:Name="OutputVoiceStatus" Text="Voce italiana di Windows attiva." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,8,0,12"/>
+                        <CheckBox x:Name="RaceEngineerCheck" Content="Ingegnere di gara attivo" Foreground="#EAF0F3" Checked="RaceEngineerCheck_Changed" Unchecked="RaceEngineerCheck_Changed" Margin="0,0,0,10"/>
                         <TextBlock Text="Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; il riconoscimento usa il microfono predefinito di Windows senza inviare l’audio a un servizio cloud." TextWrapping="Wrap"/>
                         <TextBlock x:Name="VoiceStatus" Text="Riconoscimento vocale italiano: verifica in corso…" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,12,0,0"/>
                         <TextBlock Text="Per visualizzare il pannello sopra AC, usa modalità finestra senza bordi. L’overlay non modifica i banner o le regole del gioco." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,18,0,0"/>

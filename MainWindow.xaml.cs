@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private DateTime _lastVoiceDiagnosticAt = DateTime.MinValue;
     private bool _pttActive;
     private bool _recognizedForPtt;
+    private int _lastLapRadio = -1;
     private string _coachStatus = "Coach curva: avvia un giro pulito per imparare frenate e riapertura del gas.";
 
     public MainWindow()
@@ -37,6 +38,17 @@ public partial class MainWindow : Window
         InitializeComponent();
         OllamaUrlInput.Text = _settings.OllamaUrl;
         ModelInput.Text = _settings.Model;
+        OutputVoiceCombo.ItemsSource = _voice.InstalledItalianVoices;
+        if (!string.IsNullOrWhiteSpace(_settings.OutputVoice) && _voice.InstalledItalianVoices.Contains(_settings.OutputVoice))
+            OutputVoiceCombo.SelectedItem = _settings.OutputVoice;
+        else if (_voice.InstalledItalianVoices.Count > 0)
+            OutputVoiceCombo.SelectedIndex = 0;
+        SpeechSpeedSlider.Value = Math.Clamp(_settings.SpeechRatePercent, 75, 135);
+        SpeechSpeedText.Text = $"{_settings.SpeechRatePercent}%";
+        NaturalVoiceCheck.IsChecked = _settings.UseNaturalVoice;
+        RaceEngineerCheck.IsChecked = _settings.RaceEngineerEnabled;
+        _voice.ConfigureOutput(_settings.OutputVoice, _settings.SpeechRatePercent, _settings.UseNaturalVoice);
+        OutputVoiceStatus.Text = _voice.OutputVoiceStatus;
         ModelFolderText.Text = $"Cartella modelli Ollama: {Environment.GetEnvironmentVariable("OLLAMA_MODELS") ?? @"%USERPROFILE%\.ollama\models"}";
         _ptt.XboxEnabled = _settings.XboxMenuPushToTalk;
         VoiceStatus.Text = _voice.Status;
@@ -45,12 +57,14 @@ public partial class MainWindow : Window
         _voice.Recognized += OnVoiceRecognized;
         _voice.Diagnostic += OnVoiceDiagnostic;
         _voice.StatusChanged += OnVoiceStatusChanged;
+        _voice.OutputVoiceStatusChanged += OnOutputVoiceStatusChanged;
         _ptt.Changed += OnPushToTalkChanged;
         _refresh.Tick += RefreshUi;
         _refresh.Start();
         Closed += OnClosed;
         _ = CheckOllamaAsync();
         _ = _voice.InitializeAsync();
+        if (_settings.UseNaturalVoice) _ = _voice.PrepareNaturalVoiceAsync();
         EventsList.Items.Add("Pronto. Avvia Assetto Corsa per collegare la telemetria condivisa.");
         ChatHistory.Text = "AI RACE ENGINEER · modello locale\n\nCollega Assetto Corsa e chiedi carburante, gomme, bandiere, penalità o un riepilogo stint.\n";
     }
@@ -77,6 +91,23 @@ public partial class MainWindow : Window
         {
             _highWearAnnounced = true;
             OnRaceEvent(new(DateTime.Now, "GOMME", $"Usura gomme media {snapshot.TyreWearPercent:0}%. Valuta la sosta."));
+        }
+        if (snapshot.CompletedLaps > _lastLapRadio && snapshot.LastLapTimeSeconds is >= 10 and <= 900)
+        {
+            _lastLapRadio = snapshot.CompletedLaps;
+            var report = RaceEngineerControl.BuildLapCall(snapshot, _settings);
+            Dispatcher.BeginInvoke(() =>
+            {
+                EventsList.Items.Insert(0, $"[REPORT GIRO] {report}");
+                while (EventsList.Items.Count > 100) EventsList.Items.RemoveAt(EventsList.Items.Count - 1);
+                LapReports.Items.Insert(0, report);
+                while (LapReports.Items.Count > 100) LapReports.Items.RemoveAt(LapReports.Items.Count - 1);
+                if (_settings.RaceEngineerEnabled)
+                {
+                    if (_settings.SilentLaps > 0) _settings.SilentLaps--;
+                    else if (_settings.SpeakReplies) _voice.Speak(report);
+                }
+            });
         }
         if ((DateTime.Now - _lastCsvWrite).TotalSeconds >= 1)
         {
@@ -162,7 +193,8 @@ public partial class MainWindow : Window
         var question = (prompt ?? ChatInput.Text).Trim();
         if (question.Length == 0 || _sending) return;
         var telemetry = GetUsableSnapshot();
-        var factualAnswer = RaceEngineerFacts.TryAnswer(question, telemetry);
+        var factualAnswer = RaceEngineerControl.TryApply(question, _settings, _voice)
+            ?? RaceEngineerFacts.TryAnswer(question, telemetry);
         if (factualAnswer is not null)
         {
             _sending = true;
@@ -225,6 +257,11 @@ public partial class MainWindow : Window
         });
     }
 
+    private void OnOutputVoiceStatusChanged(string message)
+    {
+        Dispatcher.BeginInvoke(() => OutputVoiceStatus.Text = message);
+    }
+
     private void RefreshVoiceDiagnostic()
     {
         if (_pttActive && (DateTime.Now - _pttStartedAt).TotalMilliseconds > 1200 &&
@@ -283,6 +320,49 @@ public partial class MainWindow : Window
     }
 
     private void AlwaysOnTopCheck_Changed(object sender, RoutedEventArgs e) => Topmost = AlwaysOnTopCheck.IsChecked == true;
+
+    private void OutputVoice_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.OutputVoice = OutputVoiceCombo.SelectedItem as string ?? "";
+        ApplyOutputVoiceSettings();
+    }
+
+    private void SpeechSpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!IsLoaded) return;
+        _settings.SpeechRatePercent = (int)Math.Round(SpeechSpeedSlider.Value);
+        SpeechSpeedText.Text = $"{_settings.SpeechRatePercent}%";
+        ApplyOutputVoiceSettings();
+    }
+
+    private void NaturalVoiceCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.UseNaturalVoice = NaturalVoiceCheck.IsChecked == true;
+        ApplyOutputVoiceSettings();
+        if (_settings.UseNaturalVoice) _ = _voice.PrepareNaturalVoiceAsync();
+    }
+
+    private async void PrepareNaturalVoice_Click(object sender, RoutedEventArgs e)
+    {
+        OutputVoiceStatus.Text = "Preparazione della voce neurale italiana…";
+        await _voice.PrepareNaturalVoiceAsync();
+        OutputVoiceStatus.Text = _voice.OutputVoiceStatus;
+    }
+
+    private void RaceEngineerCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.RaceEngineerEnabled = RaceEngineerCheck.IsChecked == true;
+        _settings.Save();
+    }
+
+    private void ApplyOutputVoiceSettings()
+    {
+        _voice.ConfigureOutput(_settings.OutputVoice, _settings.SpeechRatePercent, _settings.UseNaturalVoice);
+        _settings.Save();
+    }
 
     private void ChatInput_KeyDown(object sender, KeyEventArgs e)
     {
@@ -344,6 +424,11 @@ public partial class MainWindow : Window
         _settings.OllamaUrl = OllamaUrlInput.Text.Trim().TrimEnd('/');
         _settings.Model = ModelInput.Text.Trim();
         _settings.ModelSelectionExplicit = true;
+        _settings.OutputVoice = OutputVoiceCombo.SelectedItem as string ?? _settings.OutputVoice;
+        _settings.SpeechRatePercent = (int)Math.Round(SpeechSpeedSlider.Value);
+        _settings.UseNaturalVoice = NaturalVoiceCheck.IsChecked == true;
+        _settings.RaceEngineerEnabled = RaceEngineerCheck.IsChecked == true;
+        _voice.ConfigureOutput(_settings.OutputVoice, _settings.SpeechRatePercent, _settings.UseNaturalVoice);
         _settings.Save();
         SettingsStatus.Text = "Impostazioni salvate.";
         _ = CheckOllamaAsync();
