@@ -19,7 +19,10 @@ public sealed class AppSettings
     public int SpeechRatePercent { get; set; } = 100;
     public string OutputVoice { get; set; } = "";
     public bool UseNaturalVoice { get; set; } = true;
-    public string SpeechRecognitionModel { get; set; } = "base";
+    // Turbo is the default radio recognizer: substantially more reliable than
+    // base in a noisy cockpit, while still practical on CPU once loaded.
+    public string SpeechRecognitionModel { get; set; } = "turbo-q5";
+    public bool SpeechRecognitionModelExplicit { get; set; }
     public bool CoachBrakeBeeps { get; set; } = true;
     public bool CoachThrottleBeeps { get; set; } = true;
     /// <summary>Milliseconds before a learned marker; zero means at the marker.</summary>
@@ -41,6 +44,15 @@ public sealed class AppSettings
                 // One-time migration from the old default: Qwen3's reasoning mode caused radio replies to ramble.
                 if (!loaded.ModelSelectionExplicit && loaded.Model.Equals("qwen3:4b", StringComparison.OrdinalIgnoreCase))
                     loaded.Model = "qwen2.5:3b";
+                // Previous releases selected Whisper base automatically. Move
+                // existing installs once to the better local radio model; the
+                // user can still explicitly choose Base or Tiny afterwards.
+                if (!loaded.SpeechRecognitionModelExplicit)
+                {
+                    loaded.SpeechRecognitionModel = "turbo-q5";
+                    loaded.SpeechRecognitionModelExplicit = true;
+                    loaded.Save();
+                }
                 return loaded;
             }
         }

@@ -68,7 +68,7 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 - Stima carburante/usura e consiglio di pit stop.
 - Suggerimenti di assetto generici dal modello locale.
 - Registrazione CSV della telemetria in Documenti\AiRaceEngineer\Sessions.
-- Push-to-talk con F8 o pulsante Xbox Menu/Start su tutti gli slot XInput, con bip distinti alla pressione e al rilascio; l’audio viene acquisito dal microfono predefinito e trascritto localmente da Whisper. Il profilo predefinito **Accurato** usa Whisper base (142 MB); il profilo **Veloce** usa Whisper tiny (77 MB).
+- Push-to-talk con F8 o pulsante Xbox Menu/Start su tutti gli slot XInput, con bip distinti alla pressione e al rilascio; l’audio viene acquisito dal microfono predefinito e trascritto localmente da Whisper con lessico radio di gara. Il profilo predefinito **Massima accuratezza** usa Whisper large-v3 turbo quantizzato (circa 547 MB); sono disponibili anche **Bilanciato** base (142 MB) e **Veloce** tiny (77 MB).
 - Coach curva che conserva il giro personale più veloce per auto e pista. Nelle impostazioni puoi attivare indipendentemente il bip di frenata e quello di riapertura gas, oppure disattivarli entrambi; l’anticipo è regolabile da **sul punto** a **1 secondo prima**.
 - Voce neurale italiana locale facoltativa: si scarica una volta insieme al motore Piper e viene salvata accanto ai modelli locali. Nelle impostazioni puoi scegliere anche una voce Windows e regolare la velocità fra 75% e 135%.
 - Comandi radio: “parla più veloce”, “parla più piano”, “dimmi i distacchi”, “non dirmi i distacchi”, “ogni giro dimmi il carburante”, “box al giro 12”, “annulla piano box”, “non parlare per il prossimo giro”, “ingegnere on/off”.

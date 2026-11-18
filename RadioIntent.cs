@@ -29,9 +29,14 @@ public static class RadioIntent
         var asksWho = words.Any(w => w.StartsWith("chi", StringComparison.Ordinal) || Distance(w, "ciao") <= 1 || Distance(w, "chiho") <= 2);
         if (mentionsFront && (asksHowFar || asksWho || words.Length <= 3))
             return "chi ho davanti e quanto dista";
+        if (asksHowFar && words.Any(w => w.StartsWith("pross", StringComparison.Ordinal) || Distance(w, "prossimo") <= 2))
+            return "chi ho davanti e quanto dista";
 
         if (words.Any(w => w.Contains("dentr", StringComparison.Ordinal) || w.Contains("dietr", StringComparison.Ordinal)))
             return "chi ho dietro e quanto dista";
+        if (words.Any(w => w.StartsWith("entr", StringComparison.Ordinal) || Distance(w, "gentrato") <= 1) &&
+            words.Any(w => w.StartsWith("pit", StringComparison.Ordinal) || w.StartsWith("box", StringComparison.Ordinal)))
+            return "qualcuno è entrato ai box";
         // "gomme" is especially often transcribed as "gomes", "gome" or
         // two short words such as "go me". Look at individual words and the
         // final two words so a preceding sentence does not hide the request.

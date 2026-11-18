@@ -16,6 +16,9 @@ public sealed class VoiceService : IDisposable
 {
     private const string WhisperTinyModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
     private const string WhisperBaseModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+    // Quantised large-v3-turbo: a large accuracy improvement over base without
+    // the multi-gigabyte memory footprint of full large-v3.
+    private const string WhisperTurboModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin";
     private const string TinyModelSha256 = "BE07E048E1E599AD46341C8D2A135645097A538221678B7ACDD1B1919C6E1B21";
     private const string PiperArchiveUrl = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
     private const string PiperModelUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/paola/medium/it_IT-paola-medium.onnx?download=true";
@@ -32,7 +35,7 @@ public sealed class VoiceService : IDisposable
     private WhisperFactory? _whisperFactory;
     private WhisperProcessor? _whisperProcessor;
     private Task? _initializing;
-    private string _recognitionModel = "base";
+    private string _recognitionModel = "turbo-q5";
     private Task? _naturalVoiceInitializing;
     private string? _piperExecutable;
     private string? _piperModel;
@@ -97,7 +100,7 @@ public sealed class VoiceService : IDisposable
         }
     }
 
-    public Task InitializeAsync(string recognitionModel = "base")
+    public Task InitializeAsync(string recognitionModel = "turbo-q5")
     {
         lock (_captureGate)
         {
@@ -120,7 +123,13 @@ public sealed class VoiceService : IDisposable
             _whisperProcessor?.Dispose();
             _whisperFactory?.Dispose();
             _whisperFactory = WhisperFactory.FromPath(modelPath);
-            _whisperProcessor = _whisperFactory.CreateBuilder().WithLanguage("it").Build();
+            _whisperProcessor = _whisperFactory.CreateBuilder()
+                .WithLanguage("it")
+                .WithPrompt("Italiano. Radio di gara Assetto Corsa. Gomme, carburante, danni, box, pit stop, davanti, dietro, distacco, posizione, bandiere, sorpasso, curva, frenata, gas, strategia.")
+                .WithNoContext()
+                .WithSingleSegment()
+                .WithTemperature(0f)
+                .Build();
             SetStatus($"Riconoscimento italiano pronto · locale, modello {recognitionModel}.");
         }
         catch (Exception ex)
@@ -142,8 +151,13 @@ public sealed class VoiceService : IDisposable
     private async Task DownloadModelAsync(string path, string recognitionModel)
     {
         var temporaryPath = path + ".download";
-        var url = recognitionModel == "tiny" ? WhisperTinyModelUrl : WhisperBaseModelUrl;
-        var size = recognitionModel == "tiny" ? "77 MB" : "142 MB";
+        var url = recognitionModel switch
+        {
+            "tiny" => WhisperTinyModelUrl,
+            "turbo-q5" => WhisperTurboModelUrl,
+            _ => WhisperBaseModelUrl
+        };
+        var size = recognitionModel switch { "tiny" => "77 MB", "turbo-q5" => "547 MB", _ => "142 MB" };
         SetStatus($"Download riconoscimento Whisper {recognitionModel} · {size} · una sola volta…");
         try
         {
@@ -187,6 +201,7 @@ public sealed class VoiceService : IDisposable
     private static bool IsModelUsable(string path, string recognitionModel)
     {
         if (!File.Exists(path)) return false;
+        if (recognitionModel == "turbo-q5") return new FileInfo(path).Length > 500_000_000;
         if (recognitionModel != "tiny") return new FileInfo(path).Length > 100_000_000;
         return HasExpectedHashAsync(path).GetAwaiter().GetResult();
     }
@@ -199,7 +214,13 @@ public sealed class VoiceService : IDisposable
         return Convert.ToHexString(hash).Equals(TinyModelSha256, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string NormalizeRecognitionModel(string value) => value.Equals("tiny", StringComparison.OrdinalIgnoreCase) ? "tiny" : "base";
+    private static string NormalizeRecognitionModel(string value) => value.ToLowerInvariant() switch
+    {
+        "tiny" => "tiny",
+        "base" => "base",
+        "turbo-q5" or "turbo" or "large-v3-turbo" => "turbo-q5",
+        _ => "turbo-q5"
+    };
 
     public void StartListening()
     {

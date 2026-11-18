@@ -17,6 +17,9 @@ public static class RaceEngineerFacts
             return Damage(t);
         if (ContainsAny(q, "gomma", "gomme", "pneumatic", "usura", "temperatura gomme", "pressione gomme"))
             return Tyres(t);
+        if (ContainsAny(q, "qualcuno e entrato", "chi e ai box", "chi e in pit", "in pit", "ai box") &&
+            ContainsAny(q, "qualcuno", "chi", "entrato", "in pit", "ai box"))
+            return PitStatus(t);
         if (ContainsAny(q, "davanti", "dietro", "rivale", "avversar", "raggiunger", "superar", "chi c e", "chi c'"))
             return Rivals(t, q);
         if (ContainsAny(q, "benzina", "carburante", "rifornimento", "pit stop", "sosta", "box"))
@@ -83,11 +86,29 @@ public static class RaceEngineerFacts
         var behind = valid.Where(x => LiveRank(x) > playerRank).OrderBy(LiveRank).FirstOrDefault();
         var asksAhead = query?.Contains("davanti", StringComparison.Ordinal) == true;
         var asksBehind = query?.Contains("dietro", StringComparison.Ordinal) == true;
+        var asksAllAhead = asksAhead && (query?.Contains("tutti", StringComparison.Ordinal) == true || query?.Contains("nomi", StringComparison.Ordinal) == true);
+        var asksFirst = query?.Contains("primo", StringComparison.Ordinal) == true;
+        if (asksAllAhead || asksFirst)
+        {
+            var names = valid.Where(x => LiveRank(x) < playerRank).OrderByDescending(LiveRank)
+                .Select(x => string.IsNullOrWhiteSpace(x.Driver) ? x.Car : x.Driver).Take(12).ToArray();
+            if (names.Length == 0) return "Sei già primo.";
+            return asksFirst
+                ? $"Per essere primo devi superare: {string.Join(", ", names)}."
+                : $"Davanti hai: {string.Join(", ", names)}.";
+        }
         if (asksAhead && ahead is not null) return Describe(ahead, ProgressDelta(ahead, player, length), "davanti", t);
         if (asksBehind && behind is not null) return Describe(behind, ProgressDelta(behind, player, length), "dietro", t);
         if (ahead is null && behind is null) return "Nessun rivale vicino.";
         if (ahead is not null) return Describe(ahead, ProgressDelta(ahead, player, length), "davanti", t);
         return Describe(behind!, ProgressDelta(behind!, player, length), "dietro", t);
+    }
+
+    private static string PitStatus(TelemetrySnapshot t)
+    {
+        var inPit = (t.FieldCars ?? []).Where(x => x.Id != 0 && ((x.Flags & 2) != 0 || (x.Flags & 4) != 0))
+            .Select(x => string.IsNullOrWhiteSpace(x.Driver) ? x.Car : x.Driver).ToArray();
+        return inPit.Length == 0 ? "Nessun avversario è ai box." : $"Ai box: {string.Join(", ", inPit)}.";
     }
 
     /// <summary>Short wording for automatic end-of-lap radio calls.</summary>

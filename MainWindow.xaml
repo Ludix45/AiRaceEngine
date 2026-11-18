@@ -122,7 +122,8 @@
                         </ComboBox>
                         <TextBlock Text="Riconoscimento vocale" Foreground="{StaticResource Muted}"/>
                         <ComboBox x:Name="RecognitionModelCombo" Margin="0,4,0,10" SelectionChanged="RecognitionModel_Changed">
-                            <ComboBoxItem Tag="base">Accurato · Whisper base · 142 MB</ComboBoxItem>
+                            <ComboBoxItem Tag="turbo-q5">Massima accuratezza · Whisper large-v3 turbo · 547 MB</ComboBoxItem>
+                            <ComboBoxItem Tag="base">Bilanciato · Whisper base · 142 MB</ComboBoxItem>
                             <ComboBoxItem Tag="tiny">Veloce · Whisper tiny · 77 MB</ComboBoxItem>
                         </ComboBox>
                         <TextBlock Text="Voce dell’ingegnere" Foreground="{StaticResource Muted}"/>

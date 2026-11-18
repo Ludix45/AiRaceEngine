@@ -47,7 +47,12 @@ public partial class MainWindow : Window
         AppLanguage.Current = _settings.Language;
         OllamaUrlInput.Text = _settings.OllamaUrl;
         ModelInput.Text = _settings.Model;
-        RecognitionModelCombo.SelectedIndex = _settings.SpeechRecognitionModel.Equals("tiny", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        RecognitionModelCombo.SelectedIndex = _settings.SpeechRecognitionModel.ToLowerInvariant() switch
+        {
+            "tiny" => 2,
+            "base" => 1,
+            _ => 0
+        };
         OutputVoiceCombo.ItemsSource = _voice.InstalledItalianVoices;
         if (!string.IsNullOrWhiteSpace(_settings.OutputVoice) && _voice.InstalledItalianVoices.Contains(_settings.OutputVoice))
             OutputVoiceCombo.SelectedItem = _settings.OutputVoice;
@@ -349,7 +354,8 @@ public partial class MainWindow : Window
     private void RecognitionModel_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded || RecognitionModelCombo.SelectedItem is not ComboBoxItem selected) return;
-        _settings.SpeechRecognitionModel = selected.Tag as string ?? "base";
+        _settings.SpeechRecognitionModel = selected.Tag as string ?? "turbo-q5";
+        _settings.SpeechRecognitionModelExplicit = true;
         _settings.Save();
         VoiceStatus.Text = "Cambio modello vocale in corso…";
         _ = _voice.InitializeAsync(_settings.SpeechRecognitionModel);
@@ -496,7 +502,11 @@ public partial class MainWindow : Window
         _settings.OllamaUrl = OllamaUrlInput.Text.Trim().TrimEnd('/');
         _settings.Model = ModelInput.Text.Trim();
         _settings.ModelSelectionExplicit = true;
-        if (RecognitionModelCombo.SelectedItem is ComboBoxItem recognition) _settings.SpeechRecognitionModel = recognition.Tag as string ?? "base";
+        if (RecognitionModelCombo.SelectedItem is ComboBoxItem recognition)
+        {
+            _settings.SpeechRecognitionModel = recognition.Tag as string ?? "turbo-q5";
+            _settings.SpeechRecognitionModelExplicit = true;
+        }
         _settings.OutputVoice = OutputVoiceCombo.SelectedItem as string ?? _settings.OutputVoice;
         _settings.SpeechRatePercent = (int)Math.Round(SpeechSpeedSlider.Value);
         _settings.UseNaturalVoice = NaturalVoiceCheck.IsChecked == true;
