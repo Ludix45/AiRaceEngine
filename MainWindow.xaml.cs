@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -32,6 +33,7 @@ public partial class MainWindow : Window
     private bool _recognizedForPtt;
     private int _lastLapRadio = -1;
     private bool _modelWarmed;
+    private bool _lowPriority;
     private string _coachStatus = "Coach curva: avvia un giro pulito per imparare frenate e riapertura del gas.";
 
     public MainWindow()
@@ -94,6 +96,14 @@ public partial class MainWindow : Window
 
     private void OnTelemetryUpdated(TelemetrySnapshot snapshot)
     {
+        // While a session is live the game owns the CPU: speech work and the
+        // overlay run below normal priority so they cannot steal its slices.
+        if (snapshot.Connected != _lowPriority)
+        {
+            _lowPriority = snapshot.Connected;
+            ApplyProcessPriority(_lowPriority);
+        }
+
         // Warm the local model as soon as a session connects: loading it takes
         // seconds of GPU and VRAM, which is harmless in the menus and a stutter
         // in the middle of the race.
@@ -168,6 +178,16 @@ public partial class MainWindow : Window
             }
             catch { }
         }
+    }
+
+    private static void ApplyProcessPriority(bool gaming)
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            process.PriorityClass = gaming ? ProcessPriorityClass.BelowNormal : ProcessPriorityClass.Normal;
+        }
+        catch { }
     }
 
     private void OnRaceEvent(RaceEvent ev)
@@ -306,20 +326,27 @@ public partial class MainWindow : Window
             (DateTime.Now - _lastVoiceDiagnosticAt).TotalMilliseconds > 900)
         {
             var audioRecent = _voice.LastAudioAt >= _pttStartedAt && (DateTime.Now - _voice.LastAudioAt).TotalMilliseconds < 900;
-            VoiceStatus.Text = audioRecent
-                ? $"Microfono riceve audio · livello {_voice.LastAudioLevel}% · parla ora"
-                : "PTT attivo ma WASAPI non riceve audio. Controlla mute, autorizzazioni e microfono predefinito Windows.";
+            // Repainting the overlay during the phrase costs the game frames, so
+            // only write when the text really changes.
+            SetVoiceStatus(audioRecent
+                ? $"Microfono riceve audio · livello {_voice.LastAudioLevel / 10 * 10}% · parla ora"
+                : "PTT attivo ma WASAPI non riceve audio. Controlla mute, autorizzazioni e microfono predefinito Windows.");
         }
         else if (!_pttActive && !_recognizedForPtt && _pttReleasedAt != DateTime.MinValue &&
             (DateTime.Now - _pttReleasedAt).TotalMilliseconds is > 1500 and < 8000 &&
             (DateTime.Now - _lastVoiceDiagnosticAt).TotalMilliseconds > 1500)
         {
             var audioReceived = _voice.LastAudioAt >= _pttStartedAt;
-            VoiceStatus.Text = audioReceived
+            SetVoiceStatus(audioReceived
                 ? $"Audio ricevuto (livello {_voice.LastAudioLevel}%), ma nessuna frase riconosciuta. Prova una frase breve e vicina al microfono."
-                : "Nessun audio acquisito durante il PTT. Controlla mute, autorizzazioni e microfono predefinito Windows.";
+                : "Nessun audio acquisito durante il PTT. Controlla mute, autorizzazioni e microfono predefinito Windows.");
             _pttReleasedAt = DateTime.MinValue;
         }
+    }
+
+    private void SetVoiceStatus(string text)
+    {
+        if (VoiceStatus.Text != text) VoiceStatus.Text = text;
     }
 
     private void OnPushToTalkChanged(bool down, string source)
