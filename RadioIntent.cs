@@ -27,9 +27,16 @@ public static class RadioIntent
         var mentionsFront = words.Any(w => w.Contains("vant", StringComparison.Ordinal) || Distance(w, "davanti") <= 2);
         var asksHowFar = words.Any(w => w.StartsWith("quant", StringComparison.Ordinal) || w.StartsWith("cont", StringComparison.Ordinal) || Distance(w, "quanto") <= 2 || w.Contains("dist", StringComparison.Ordinal));
         var asksWho = words.Any(w => w.StartsWith("chi", StringComparison.Ordinal) || Distance(w, "ciao") <= 1 || Distance(w, "chiho") <= 2);
+        var asksAllNames = words.Any(w => w.StartsWith("tutt", StringComparison.Ordinal)) &&
+            words.Any(w => w.StartsWith("nom", StringComparison.Ordinal) || Distance(w, "nomi") <= 2);
+        if (mentionsFront && asksAllNames)
+            return "chi ho davanti tutti i nomi";
         if (mentionsFront && (asksHowFar || asksWho || words.Length <= 3))
             return "chi ho davanti e quanto dista";
-        if (asksHowFar && words.Any(w => w.StartsWith("pross", StringComparison.Ordinal) || Distance(w, "prossimo") <= 2))
+        // "prossimo" alone (the next race, the next session) is not a gap
+        // question. Only repair it when the phrase also names the car ahead,
+        // so general questions reach the language model unchanged.
+        if (mentionsFront && asksHowFar && words.Any(w => w.StartsWith("pross", StringComparison.Ordinal) || Distance(w, "prossimo") <= 2))
             return "chi ho davanti e quanto dista";
 
         if (words.Any(w => w.Contains("dentr", StringComparison.Ordinal) || w.Contains("dietr", StringComparison.Ordinal)))
@@ -42,11 +49,13 @@ public static class RadioIntent
         // final two words so a preceding sentence does not hide the request.
         var lastTwo = words.Length >= 2 ? string.Concat(words.TakeLast(2)) : string.Empty;
         var compact = string.Concat(words);
-        if (words.Any(IsTyreWord) || Distance(lastTwo, "gomme") <= 2 ||
-            (words.Length <= 3 && Distance(compact, "gomme") <= 2))
+        // Short spoken commands are safe to repair. A longer sentence may be a
+        // general question that merely mentions tyres, fuel or a lap.
+        if (words.Length <= 8 && (words.Any(IsTyreWord) || Distance(lastTwo, "gomme") <= 2 ||
+            Distance(compact, "gomme") <= 2))
             return "come sono le gomme";
-        if (words.Any(w => w.StartsWith("carbur", StringComparison.Ordinal) || w.StartsWith("benzin", StringComparison.Ordinal))) return "quanto carburante ho";
-        if (words.Any(w => w.StartsWith("ultim", StringComparison.Ordinal)) && words.Any(w => w.StartsWith("gir", StringComparison.Ordinal))) return "come è andato l ultimo giro";
+        if (words.Length <= 8 && words.Any(w => w.StartsWith("carbur", StringComparison.Ordinal) || w.StartsWith("benzin", StringComparison.Ordinal))) return "quanto carburante ho";
+        if (words.Length <= 8 && words.Any(w => w.StartsWith("ultim", StringComparison.Ordinal)) && words.Any(w => w.StartsWith("gir", StringComparison.Ordinal))) return "come è andato l ultimo giro";
         if (words.Any(w => w.Contains("spost", StringComparison.Ordinal) || w.Contains("rispost", StringComparison.Ordinal)) && words.Any(w => w.StartsWith("brev", StringComparison.Ordinal))) return "risposte brevi";
         return null;
     }

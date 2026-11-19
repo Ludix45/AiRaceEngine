@@ -2,7 +2,10 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- The Windows 10 SDK projection exposes Windows.Media.SpeechRecognition,
+         the modern speech engine that supports Italian and falls back to the
+         on-device models when the online service is unreachable. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <!-- GitHub Actions overrides Version from the release tag (vX.Y.Z). -->
     <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
@@ -19,6 +22,9 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <!-- GPU acceleration when a Vulkan driver is present; Whisper.net keeps the
+         CPU runtime as automatic fallback, so no machine loses the feature. -->
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
   </ItemGroup>
 
   <ItemGroup>

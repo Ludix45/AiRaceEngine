@@ -19,10 +19,13 @@ public sealed class AppSettings
     public int SpeechRatePercent { get; set; } = 100;
     public string OutputVoice { get; set; } = "";
     public bool UseNaturalVoice { get; set; } = true;
-    // Turbo is the default radio recognizer: substantially more reliable than
-    // base in a noisy cockpit, while still practical on CPU once loaded.
-    public string SpeechRecognitionModel { get; set; } = "turbo-q5";
+    // Windows dictation is the default: it is the system recognizer and much
+    // more reliable than small Whisper models on short Italian commands. When
+    // its language pack is missing the app falls back to Whisper turbo.
+    public string SpeechRecognitionModel { get; set; } = "windows";
     public bool SpeechRecognitionModelExplicit { get; set; }
+    /// <summary>One-time switch of existing installs to Windows dictation.</summary>
+    public bool WindowsRecognitionPreferred { get; set; }
     public bool CoachBrakeBeeps { get; set; } = true;
     public bool CoachThrottleBeeps { get; set; } = true;
     /// <summary>Milliseconds before a learned marker; zero means at the marker.</summary>
@@ -49,8 +52,17 @@ public sealed class AppSettings
                 // user can still explicitly choose Base or Tiny afterwards.
                 if (!loaded.SpeechRecognitionModelExplicit)
                 {
-                    loaded.SpeechRecognitionModel = "turbo-q5";
+                    loaded.SpeechRecognitionModel = "windows";
                     loaded.SpeechRecognitionModelExplicit = true;
+                    loaded.Save();
+                }
+                // Existing installs already had the Whisper default marked as
+                // explicit. Move them once to the Windows recognizer, which is
+                // what the user asked to hear in the radio.
+                if (!loaded.WindowsRecognitionPreferred)
+                {
+                    loaded.SpeechRecognitionModel = "windows";
+                    loaded.WindowsRecognitionPreferred = true;
                     loaded.Save();
                 }
                 return loaded;

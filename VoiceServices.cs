@@ -1,11 +1,17 @@
 using System.IO;
 using System.IO.Compression;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net.Http;
+using System.Text;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using System.Media;
 using System.Speech.Synthesis;
+using System.Net.NetworkInformation;
+using Microsoft.Win32;
+using Windows.Globalization;
+using Windows.Media.SpeechRecognition;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using Whisper.net;
@@ -36,6 +42,18 @@ public sealed class VoiceService : IDisposable
     private WhisperProcessor? _whisperProcessor;
     private Task? _initializing;
     private string _recognitionModel = "turbo-q5";
+    // Native Windows dictation (the engine behind the system speech tools).
+    // It is preferred when the installed Windows speech language matches the
+    // interface language, because it is far more accurate than small Whisper
+    // models on short radio commands.
+    private readonly object _windowsGate = new();
+    private SpeechRecognizer? _windowsRecognizer;
+    private Task? _windowsStart;
+    private DateTime _windowsStartedAt;
+    private StringBuilder? _windowsTranscript;
+    private TaskCompletionSource? _windowsStopped;
+    private bool _windowsListening;
+    private bool _useWindowsRecognition;
     private Task? _naturalVoiceInitializing;
     private string? _piperExecutable;
     private string? _piperModel;
@@ -105,7 +123,8 @@ public sealed class VoiceService : IDisposable
         lock (_captureGate)
         {
             recognitionModel = NormalizeRecognitionModel(recognitionModel);
-            if (_whisperProcessor is not null && _recognitionModel == recognitionModel) return Task.CompletedTask;
+            if (recognitionModel == "windows" && _useWindowsRecognition && _windowsRecognizer is not null) return Task.CompletedTask;
+            if (recognitionModel != "windows" && _whisperProcessor is not null && _recognitionModel == recognitionModel) return Task.CompletedTask;
             if (_initializing is { IsCompleted: false }) return _initializing;
             _recognitionModel = recognitionModel;
             return _initializing = InitializeCoreAsync(recognitionModel);
@@ -114,8 +133,31 @@ public sealed class VoiceService : IDisposable
 
     private async Task InitializeCoreAsync(string recognitionModel)
     {
+        if (recognitionModel == "windows")
+        {
+            var windowsInit = await TryInitializeWindowsRecognizerAsync().ConfigureAwait(false);
+            if (windowsInit.Ready)
+            {
+                _useWindowsRecognition = true;
+                _recognitionModel = "windows";
+                SetStatus($"Riconoscimento Windows pronto · {windowsInit.Detail}.");
+                return;
+            }
+            var windowsDetail = windowsInit.Detail;
+
+            // The Windows speech language pack is optional. Fall back to the
+            // local Whisper model instead of leaving the microphone unusable.
+            _useWindowsRecognition = false;
+            recognitionModel = "turbo-q5";
+            _recognitionModel = recognitionModel;
+            SetStatus($"Riconoscimento Windows non disponibile ({windowsDetail}). Uso Whisper large-v3 turbo locale.");
+        }
+
+        _useWindowsRecognition = false;
         try
         {
+            _windowsRecognizer?.Dispose();
+            _windowsRecognizer = null;
             var modelPath = GetModelPath(recognitionModel);
             if (!IsModelUsable(modelPath, recognitionModel))
                 await DownloadModelAsync(modelPath, recognitionModel).ConfigureAwait(false);
@@ -125,6 +167,10 @@ public sealed class VoiceService : IDisposable
             _whisperFactory = WhisperFactory.FromPath(modelPath);
             _whisperProcessor = _whisperFactory.CreateBuilder()
                 .WithLanguage("it")
+                // Whisper pads every utterance to 30 s, so the encoder cost is
+                // fixed per phrase. Use every logical core on the CPU fallback:
+                // the library default uses far fewer and is ~50% slower.
+                .WithThreads(Math.Clamp(Environment.ProcessorCount, 4, 32))
                 .WithPrompt("Italiano. Radio di gara Assetto Corsa. Gomme, carburante, danni, box, pit stop, davanti, dietro, distacco, posizione, bandiere, sorpasso, curva, frenata, gas, strategia.")
                 .WithNoContext()
                 .WithSingleSegment()
@@ -136,6 +182,98 @@ public sealed class VoiceService : IDisposable
         {
             SetStatus($"Whisper non pronto: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Prepares the modern Windows speech recognizer, the engine behind system
+    /// dictation. It uses Microsoft's online speech service when the network and
+    /// the speech privacy setting allow it, and the on-device language models
+    /// otherwise, so the microphone keeps working without a connection.
+    /// </summary>
+    private async Task<(bool Ready, string Detail)> TryInitializeWindowsRecognizerAsync()
+    {
+        var detail = "";
+        SpeechRecognizer? recognizer = null;
+        try
+        {
+            _windowsRecognizer?.Dispose();
+            _windowsRecognizer = null;
+            var culture = AppLanguage.IsEnglish ? new CultureInfo("en-US") : new CultureInfo("it-IT");
+            var language = new Language(culture.Name);
+            // Windows refuses to listen until the user accepts the speech privacy
+            // policy (0x80045509), so report that instead of starting an engine
+            // that cannot capture anything.
+            if (!SpeechPrivacyAccepted())
+                return (false, "manca il consenso di Windows al riconoscimento vocale: attivalo una volta in Impostazioni → Privacy e sicurezza → Riconoscimento vocale, poi riavvia l’app");
+            recognizer = new SpeechRecognizer(language);
+            recognizer.Constraints.Add(new SpeechRecognitionTopicConstraint(SpeechRecognitionScenario.Dictation, "dictation"));
+            var compilation = await recognizer.CompileConstraintsAsync();
+            if (compilation.Status != SpeechRecognitionResultStatus.Success)
+            {
+                recognizer.Dispose();
+                recognizer = null;
+                detail = $"Windows non prepara la dettatura {language.DisplayName} ({compilation.Status}). Installa il pacchetto da Impostazioni → Data e ora e lingua → Lingua e area → Italiano → Opzioni lingua → Riconoscimento vocale";
+                return (false, detail);
+            }
+
+            var session = recognizer.ContinuousRecognitionSession;
+            // A radio command is short: keep the session open for the whole key
+            // hold instead of letting the first pause end it.
+            session.AutoStopSilenceTimeout = TimeSpan.FromMinutes(2);
+            session.ResultGenerated += OnWindowsResultGenerated;
+            session.Completed += OnWindowsSessionCompleted;
+            _windowsRecognizer = recognizer;
+            detail = SpeechOnlinePreferred()
+                ? $"{language.DisplayName} · online quando la rete risponde, modello locale come riserva"
+                : $"{language.DisplayName} · modello locale (attiva «Riconoscimento vocale online» per usare il servizio cloud)";
+            return (true, detail);
+        }
+        catch (Exception ex)
+        {
+            try { recognizer?.Dispose(); } catch { }
+            _windowsRecognizer = null;
+            return (false, ex.Message);
+        }
+    }
+
+    private static bool SpeechPrivacyAccepted()
+    {
+        try
+        {
+            return Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy", "HasAccepted", 0) is int accepted && accepted == 1;
+        }
+        catch { return false; }
+    }
+
+    private static bool SpeechOnlinePreferred() => SpeechPrivacyAccepted() && NetworkInterface.GetIsNetworkAvailable();
+
+    private void OnWindowsResultGenerated(SpeechContinuousRecognitionSession sender, SpeechContinuousRecognitionResultGeneratedEventArgs args)
+    {
+        var result = args.Result;
+        if (result is null) return;
+        if (result.Status == SpeechRecognitionResultStatus.Success && result.Confidence != SpeechRecognitionConfidence.Rejected)
+        {
+            var text = result.Text?.Trim();
+            if (!string.IsNullOrEmpty(text))
+            {
+                lock (_windowsGate) _windowsTranscript?.Append(text).Append(' ');
+            }
+            LastAudioAt = DateTime.Now;
+            if (LastAudioLevel < 20) LastAudioLevel = 45;
+            return;
+        }
+
+        if (result.Status == SpeechRecognitionResultStatus.NetworkFailure)
+            Diagnostic?.Invoke("Il servizio vocale online non ha risposto: Windows passa da solo al modello locale. Verifica la connessione se l’errore si ripete.");
+        else if (result.Status is SpeechRecognitionResultStatus.MicrophoneUnavailable or SpeechRecognitionResultStatus.AudioQualityFailure)
+            Diagnostic?.Invoke("Il motore vocale Windows non riceve il microfono. Controlla Impostazioni → Privacy e sicurezza → Microfono e il dispositivo predefinito.");
+    }
+
+    private void OnWindowsSessionCompleted(SpeechContinuousRecognitionSession sender, SpeechContinuousRecognitionCompletedEventArgs args)
+    {
+        TaskCompletionSource? stopped;
+        lock (_windowsGate) stopped = _windowsStopped;
+        stopped?.TrySetResult();
     }
 
     private static string GetModelPath(string recognitionModel)
@@ -216,6 +354,7 @@ public sealed class VoiceService : IDisposable
 
     private static string NormalizeRecognitionModel(string value) => value.ToLowerInvariant() switch
     {
+        "windows" or "system" => "windows",
         "tiny" => "tiny",
         "base" => "base",
         "turbo-q5" or "turbo" or "large-v3-turbo" => "turbo-q5",
@@ -224,6 +363,12 @@ public sealed class VoiceService : IDisposable
 
     public void StartListening()
     {
+        if (_useWindowsRecognition && _windowsRecognizer is not null)
+        {
+            StartWindowsListening();
+            return;
+        }
+
         if (_whisperProcessor is null)
             throw new InvalidOperationException(Status.Contains("non pronto", StringComparison.OrdinalIgnoreCase)
                 ? Status : "Il modello vocale locale sta ancora caricando. Riprova tra poco.");
@@ -277,6 +422,12 @@ public sealed class VoiceService : IDisposable
 
     public async Task StopListeningAsync()
     {
+        if (_useWindowsRecognition && _windowsRecognizer is not null)
+        {
+            await StopWindowsListeningAsync().ConfigureAwait(false);
+            return;
+        }
+
         WasapiCapture? capture;
         MemoryStream? recording;
         WaveFormat? format;
@@ -329,16 +480,18 @@ public sealed class VoiceService : IDisposable
         try
         {
             SetStatus("Audio acquisito · trascrizione locale in corso…");
+            var timer = Stopwatch.StartNew();
             var samples = ConvertToWhisperSamples(bytes, format);
 
             var text = new System.Text.StringBuilder();
             await foreach (var segment in _whisperProcessor!.ProcessAsync(samples).ConfigureAwait(false))
                 text.Append(segment.Text);
+            timer.Stop();
 
             var phrase = text.ToString().Trim();
             if (phrase.Length > 0)
             {
-                SetStatus($"Riconosciuto dal microfono: «{phrase}»");
+                SetStatus($"Riconosciuto in {timer.Elapsed.TotalSeconds:0.0} s: «{phrase}»");
                 Recognized?.Invoke(phrase);
             }
             else Diagnostic?.Invoke("Whisper non ha trovato parole nell’audio. Prova una frase più breve e vicina al microfono.");
@@ -348,6 +501,106 @@ public sealed class VoiceService : IDisposable
             Diagnostic?.Invoke($"Trascrizione locale non riuscita: {ex.Message}");
         }
         finally { _transcriptionGate.Release(); }
+    }
+
+    private void StartWindowsListening()
+    {
+        var recognizer = _windowsRecognizer;
+        if (recognizer is null) return;
+        lock (_windowsGate)
+        {
+            if (_windowsListening) return;
+            _windowsTranscript = new StringBuilder();
+            _windowsStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _windowsListening = true;
+            _windowsStartedAt = DateTime.Now;
+            _windowsStart = StartWindowsSessionAsync(recognizer);
+        }
+
+        LastAudioAt = DateTime.MinValue;
+        LastAudioLevel = 0;
+        SetStatus(SpeechOnlinePreferred()
+            ? "Microfono Windows aperto · ascolto online, tieni premuto per parlare."
+            : "Microfono Windows aperto · ascolto con modello locale, tieni premuto per parlare.");
+    }
+
+    private async Task StartWindowsSessionAsync(SpeechRecognizer recognizer)
+    {
+        try
+        {
+            await recognizer.ContinuousRecognitionSession.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            TaskCompletionSource? stopped;
+            lock (_windowsGate)
+            {
+                // Drop the session so the release path keeps this message on
+                // screen instead of replacing it with "no voice recognised".
+                _windowsListening = false;
+                _windowsTranscript = null;
+                _windowsStart = null;
+                stopped = _windowsStopped;
+                _windowsStopped = null;
+            }
+            Diagnostic?.Invoke(ex.HResult == unchecked((int)0x80045509)
+                ? "Windows richiede il consenso al riconoscimento vocale: attivalo in Impostazioni → Privacy e sicurezza → Riconoscimento vocale e riavvia l’app."
+                : $"Motore vocale Windows non avviato: {ex.Message}. Verifica Impostazioni → Privacy e sicurezza → Microfono (app desktop) e Riconoscimento vocale.");
+            stopped?.TrySetResult();
+        }
+    }
+
+    private async Task StopWindowsListeningAsync()
+    {
+        SpeechRecognizer? recognizer;
+        TaskCompletionSource? stopped;
+        StringBuilder? transcript;
+        Task? start;
+        lock (_windowsGate)
+        {
+            // Also handle an engine that stopped on its own after a pause.
+            if (_windowsTranscript is null) return;
+            _windowsListening = false;
+            recognizer = _windowsRecognizer;
+            stopped = _windowsStopped;
+            transcript = _windowsTranscript;
+            start = _windowsStart;
+        }
+
+        if (recognizer is null || transcript is null) return;
+        try
+        {
+            if (start is not null) await start.WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            await recognizer.ContinuousRecognitionSession.StopAsync();
+            if (stopped is not null) await stopped.Task.WaitAsync(TimeSpan.FromSeconds(4)).ConfigureAwait(false);
+        }
+        catch (TimeoutException) { }
+        catch (Exception ex)
+        {
+            Diagnostic?.Invoke($"Riconoscimento Windows interrotto: {ex.Message}");
+        }
+        finally
+        {
+            lock (_windowsGate)
+            {
+                _windowsTranscript = null;
+                _windowsStopped = null;
+                _windowsStart = null;
+            }
+        }
+
+        var phrase = transcript.ToString().Trim();
+        if (phrase.Length == 0)
+        {
+            Diagnostic?.Invoke(LastAudioAt == DateTime.MinValue
+                ? "Il riconoscimento Windows non ha ricevuto voce. Controlla il microfono predefinito di Windows."
+                : "Windows ha ricevuto audio ma non ha riconosciuto parole. Parla più vicino al microfono.");
+            return;
+        }
+
+        var seconds = (DateTime.Now - _windowsStartedAt).TotalSeconds;
+        SetStatus($"Riconosciuto da Windows in {seconds:0.0} s: «{phrase}»");
+        Recognized?.Invoke(phrase);
     }
 
     private static int MeasureLevel(byte[] buffer, int bytesRecorded, WaveFormat format)
@@ -427,7 +680,44 @@ public sealed class VoiceService : IDisposable
         var samples = new float[pcm.Length / 2];
         for (var i = 0; i < samples.Length; i++)
             samples[i] = BitConverter.ToInt16(pcm, i * 2) / 32768f;
-        return samples;
+        return TrimSilenceAndNormalize(samples);
+    }
+
+    /// <summary>
+    /// Removes leading/trailing silence around the push-to-talk utterance and
+    /// lifts quiet microphone input. Whisper transcribes both more reliably
+    /// than a raw recording that starts with cabin noise or ends with a pause.
+    /// </summary>
+    private static float[] TrimSilenceAndNormalize(float[] samples)
+    {
+        const int window = 320; // 20 ms at 16 kHz
+        const float silenceThreshold = 0.012f;
+        var first = -1;
+        var last = -1;
+        for (var offset = 0; offset + window <= samples.Length; offset += window)
+        {
+            double sum = 0;
+            for (var i = offset; i < offset + window; i++) sum += samples[i] * samples[i];
+            if (Math.Sqrt(sum / window) < silenceThreshold) continue;
+            if (first < 0) first = offset;
+            last = offset + window;
+        }
+
+        if (first < 0 || last <= first) return samples;
+        var margin = 1600; // 100 ms of context on each side
+        first = Math.Max(0, first - margin);
+        last = Math.Min(samples.Length, last + margin);
+        var trimmed = new float[last - first];
+        Array.Copy(samples, first, trimmed, 0, trimmed.Length);
+
+        var peak = 0f;
+        foreach (var sample in trimmed) peak = Math.Max(peak, Math.Abs(sample));
+        if (peak > 0.02f && peak < 0.95f)
+        {
+            var gain = Math.Min(6f, 0.95f / peak);
+            for (var i = 0; i < trimmed.Length; i++) trimmed[i] = Math.Clamp(trimmed[i] * gain, -1f, 1f);
+        }
+        return trimmed;
     }
 
     public void Speak(string text)
@@ -595,6 +885,8 @@ public sealed class VoiceService : IDisposable
         }
         _whisperProcessor?.Dispose();
         _whisperFactory?.Dispose();
+        try { _windowsRecognizer?.Dispose(); } catch { }
+        _windowsRecognizer = null;
         _transcriptionGate.Dispose();
         _speechGate.Dispose();
         _synth.Dispose();

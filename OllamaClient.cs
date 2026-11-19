@@ -19,10 +19,15 @@ public sealed class OllamaClient
             .Select(x => x.GetProperty("name").GetString() ?? "").Where(x => x.Length > 0).ToArray();
     }
 
-    public async Task<string> AskAsync(string baseUrl, string model, string question, TelemetrySnapshot telemetry, CancellationToken ct = default, bool radio = false)
+    public async Task<string> AskAsync(string baseUrl, string model, string question, TelemetrySnapshot telemetry, CancellationToken ct = default, bool radio = false, bool general = false)
     {
         var responseLanguage = AppLanguage.IsEnglish ? "Rispondi in inglese." : "Rispondi in italiano.";
-        var system = radio
+        // Questions that the radio router could not classify are answered by
+        // the local model as normal questions, not forced into a data intent.
+        var generalSystem = "Sei un assistente locale competente. Rispondi alla domanda in modo chiaro e utile. Se la domanda riguarda la sessione in corso, la vettura o i dati di gara (carburante, gomme, danni, distacchi, posizione, box), usa solo la telemetria fornita e non inventare valori: se un dato manca, dillo. Per ogni altro argomento — cultura generale, regole e storia dello sport, meteo, tecnologia, consigli pratici — rispondi con le tue conoscenze senza limitarti ai dati di gara. Massimo tre frasi, salvo richiesta esplicita di approfondimento. /no_think";
+        var system = general
+            ? generalSystem
+            : radio
             ? "Sei l'ingegnere di gara dell'utente alla radio. La trascrizione vocale italiana può contenere parole sbagliate: deduci l'intento dal suono, dal contesto della corsa e dai dati, senza trattarla come una lista fissa di comandi. Rispondi anche a saluti, preparazione gara, strategia, box, bandiere, meteo, guida e impostazioni del coach. Risposta radio: una frase, massimo 18 parole, salvo richiesta esplicita di spiegazione. Per domande sui dati di gara dai solo il dato chiesto e, se serve, un solo consiglio concreto. Non aggiungere frasi generiche su traiettoria, sterzo, frenata o motore se non sono richieste. Non dire mai da dove arrivano i dati e non elencare telemetria grezza. I campi a zero possono essere assenti. Non trasformare indici gomme o danni in percentuali se il contesto non lo dichiara. Per i rivali usa solo Campo e presenta distanze o tempi come stime, mai come distacchi ufficiali. Se un dato manca, dillo chiaramente in una frase. Non inventare meteo, bandiere, penalità, nomi, danni o punti di frenata. Per consigli in curva usa solo un riferimento personale disponibile; se non c'è, chiedi un giro pulito. /no_think"
             : "Sei l'ingegnere di gara dell'utente. Rispondi in italiano come alla radio: apri con la situazione utile, spiega cosa deve fare adesso e fermati. Dai un solo consiglio concreto, leggibile mentre guida. Non dire mai da dove arrivano i dati, non elencare telemetria grezza, indici o campi tecnici. I campi a zero possono indicare un dato assente. Non trasformare indice gomme o danni grezzi in percentuali se il contesto non lo dichiara. Per i rivali usa solo FieldCars e presenta distanze/tempi come stime, mai come distacchi ufficiali. Se manca un dato, dillo in modo semplice e non inventare. Non inventare meteo, bandiere, penalità, nomi, danni o punti di frenata. Per i consigli in curva usa solo il riferimento personale realmente disponibile; se non c'è, chiedi un giro pulito. /no_think";
         system += " " + responseLanguage;
@@ -67,7 +72,7 @@ public sealed class OllamaClient
                 new { role = "system", content = system },
                 new { role = "user", content = $"STATO TELEMETRICO STRUTTURATO (AC): {JsonSerializer.Serialize(context)}\n\nRICHIESTA{(radio ? " RADIO TRASCRITTA" : "")}: {question}" }
             },
-            options = new { temperature = radio ? 0.15 : 0.25, num_ctx = 4096, num_predict = radio ? 72 : 128 }
+            options = new { temperature = general ? 0.4 : radio ? 0.15 : 0.25, num_ctx = 4096, num_predict = general ? 260 : radio ? 72 : 128 }
         };
         using var response = await Http.PostAsJsonAsync($"{Normalize(baseUrl)}/api/chat", payload, ct);
         response.EnsureSuccessStatusCode();

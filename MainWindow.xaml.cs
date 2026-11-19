@@ -49,8 +49,9 @@ public partial class MainWindow : Window
         ModelInput.Text = _settings.Model;
         RecognitionModelCombo.SelectedIndex = _settings.SpeechRecognitionModel.ToLowerInvariant() switch
         {
-            "tiny" => 2,
-            "base" => 1,
+            "tiny" => 3,
+            "base" => 2,
+            "turbo-q5" or "turbo" or "large-v3-turbo" => 1,
             _ => 0
         };
         OutputVoiceCombo.ItemsSource = _voice.InstalledItalianVoices;
@@ -234,7 +235,10 @@ public partial class MainWindow : Window
         ChatHistory.ScrollToEnd();
         try
         {
-            var answer = await _ollama.AskAsync(_settings.OllamaUrl, _settings.Model, question, telemetry, radio: fromRadio);
+            // When no race-data intent matched, let the model answer the
+            // question as a general one instead of forcing a canned reply.
+            var answer = await _ollama.AskAsync(_settings.OllamaUrl, _settings.Model, question, telemetry,
+                radio: fromRadio, general: normalizedRadioQuestion is null);
             ChatHistory.AppendText(answer + "\n");
             if (_settings.SpeakReplies) _voice.Speak(answer);
         }
