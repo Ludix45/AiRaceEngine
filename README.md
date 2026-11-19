@@ -77,6 +77,7 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 - Opzione finestra sempre in primo piano.
 - Al primo avvio chiede la lingua dell’interfaccia (**Italiano** o **English**); la scelta resta modificabile nelle impostazioni e orienta anche le risposte generative del modello locale.
 - Pulsante per scaricare il modello configurato attraverso l’API locale Ollama.
+- Modello locale tenuto in memoria durante la sessione: si carica appena Assetto Corsa si collega e resta pronto per un’ora di domande (`keep_alive` 60 minuti), così la prima richiesta in gara non ricarica più ~2,4 GB in VRAM (misurati 3,1 s di caricamento contro 0,2 s di risposta effettiva, che era la causa dei cali di frame). Alla chiusura dell’app il modello viene scaricato.
 
 ## Avvio
 

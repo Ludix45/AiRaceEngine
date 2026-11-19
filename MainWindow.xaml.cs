@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private bool _pttActive;
     private bool _recognizedForPtt;
     private int _lastLapRadio = -1;
+    private bool _modelWarmed;
     private string _coachStatus = "Coach curva: avvia un giro pulito per imparare frenate e riapertura del gas.";
 
     public MainWindow()
@@ -93,6 +94,16 @@ public partial class MainWindow : Window
 
     private void OnTelemetryUpdated(TelemetrySnapshot snapshot)
     {
+        // Warm the local model as soon as a session connects: loading it takes
+        // seconds of GPU and VRAM, which is harmless in the menus and a stutter
+        // in the middle of the race.
+        if (snapshot.Connected && !_modelWarmed)
+        {
+            _modelWarmed = true;
+            _ = _ollama.PreloadAsync(_settings.OllamaUrl, _settings.Model);
+        }
+        else if (!snapshot.Connected) _modelWarmed = false;
+
         var coach = _coach.Update(snapshot, _settings.CoachBrakeBeeps, _settings.CoachThrottleBeeps, _settings.CoachCueLeadMilliseconds);
         if (coach.Status is not null) _coachStatus = coach.Status;
         foreach (var cue in coach.Cues)
@@ -566,6 +577,7 @@ public partial class MainWindow : Window
         _ptt.Dispose();
         _voice.Dispose();
         _telemetry.Dispose();
+        try { _ollama.UnloadAsync(_settings.OllamaUrl, _settings.Model).Wait(TimeSpan.FromSeconds(2)); } catch { }
         _settings.Save();
     }
 }

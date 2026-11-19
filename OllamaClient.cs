@@ -9,6 +9,10 @@ namespace AiRaceEngineer;
 public sealed class OllamaClient
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(15) };
+    // Ollama unloads an idle model after five minutes. Putting the 2.4 GB back
+    // into VRAM on the next question took 3.1 s and caused the in-race frame
+    // drops, so the model is kept resident for an hour of questions instead.
+    private const string KeepAlive = "60m";
 
     public async Task<IReadOnlyList<string>> GetModelsAsync(string baseUrl, CancellationToken ct = default)
     {
@@ -65,6 +69,7 @@ public sealed class OllamaClient
         var payload = new
         {
             model,
+            keep_alive = KeepAlive,
             stream = false,
             think = false,
             messages = new[]
@@ -79,6 +84,45 @@ public sealed class OllamaClient
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
         var answer = json.RootElement.GetProperty("message").GetProperty("content").GetString() ?? "Nessuna risposta.";
         return Regex.Replace(answer, "<think>[\\s\\S]*?</think>", "", RegexOptions.IgnoreCase).Trim();
+    }
+
+    /// <summary>
+    /// Loads the model while the game is still loading, so the first question in
+    /// the race is answered from memory and the GPU is never busy re-uploading
+    /// weights mid-corner.
+    /// </summary>
+    public async Task PreloadAsync(string baseUrl, string model, CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await Http.PostAsJsonAsync($"{Normalize(baseUrl)}/api/chat", new
+            {
+                model,
+                keep_alive = KeepAlive,
+                stream = false,
+                messages = new[] { new { role = "user", content = "ok" } },
+                options = new { num_predict = 1 }
+            }, ct);
+            response.EnsureSuccessStatusCode();
+        }
+        catch { }
+    }
+
+    /// <summary>Frees the model from VRAM when the app closes.</summary>
+    public async Task UnloadAsync(string baseUrl, string model, CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await Http.PostAsJsonAsync($"{Normalize(baseUrl)}/api/chat", new
+            {
+                model,
+                keep_alive = 0,
+                stream = false,
+                messages = new[] { new { role = "user", content = "ok" } },
+                options = new { num_predict = 1 }
+            }, ct);
+        }
+        catch { }
     }
 
     public async Task PullAsync(string baseUrl, string model, IProgress<string>? progress, CancellationToken ct = default)
