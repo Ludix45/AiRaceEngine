@@ -26,6 +26,10 @@ public sealed class AppSettings
     public bool SpeechRecognitionModelExplicit { get; set; }
     /// <summary>One-time switch of existing installs to Windows dictation.</summary>
     public bool WindowsRecognitionPreferred { get; set; }
+    /// <summary>Optional cloud transcription: OpenAI-compatible endpoint, model and key.</summary>
+    public string CloudSpeechEndpoint { get; set; } = "https://api.openai.com/v1/audio/transcriptions";
+    public string CloudSpeechModel { get; set; } = "gpt-4o-mini-transcribe";
+    public string CloudSpeechApiKey { get; set; } = "";
     public bool CoachBrakeBeeps { get; set; } = true;
     public bool CoachThrottleBeeps { get; set; } = true;
     /// <summary>Milliseconds before a learned marker; zero means at the marker.</summary>

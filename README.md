@@ -77,6 +77,7 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 - Opzione finestra sempre in primo piano.
 - Al primo avvio chiede la lingua dell’interfaccia (**Italiano** o **English**); la scelta resta modificabile nelle impostazioni e orienta anche le risposte generative del modello locale.
 - Pulsante per scaricare il modello configurato attraverso l’API locale Ollama.
+- Riconoscimento **Cloud** opzionale, per non usare affatto GPU e CPU mentre giochi: l’audio viene inviato solo al rilascio del PTT a un endpoint compatibile OpenAI (`multipart` su `/audio/transcriptions`, campo `text` in risposta). Predefinito `https://api.openai.com/v1/audio/transcriptions` con `gpt-4o-mini-transcribe`; funziona anche con Groq (`https://api.groq.com/openai/v1/audio/transcriptions`, `whisper-large-v3-turbo`). La chiave resta in `settings.json` su questo PC; senza chiave o senza rete l’app lo segnala e usa il motore locale.
 - Modello locale tenuto in memoria durante la sessione: si carica appena Assetto Corsa si collega e resta pronto per un’ora di domande (`keep_alive` 60 minuti), così la prima richiesta in gara non ricarica più ~2,4 GB in VRAM (misurati 3,1 s di caricamento contro 0,2 s di risposta effettiva, che era la causa dei cali di frame). Alla chiusura dell’app il modello viene scaricato.
 
 ## Avvio

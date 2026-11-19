@@ -52,11 +52,16 @@ public partial class MainWindow : Window
         ModelInput.Text = _settings.Model;
         RecognitionModelCombo.SelectedIndex = _settings.SpeechRecognitionModel.ToLowerInvariant() switch
         {
-            "tiny" => 3,
-            "base" => 2,
-            "turbo-q5" or "turbo" or "large-v3-turbo" => 1,
+            "tiny" => 4,
+            "base" => 3,
+            "turbo-q5" or "turbo" or "large-v3-turbo" => 2,
+            "cloud" => 1,
             _ => 0
         };
+        CloudEndpointInput.Text = _settings.CloudSpeechEndpoint;
+        CloudModelInput.Text = _settings.CloudSpeechModel;
+        CloudKeyInput.Password = _settings.CloudSpeechApiKey;
+        _voice.ConfigureCloud(_settings.CloudSpeechEndpoint, _settings.CloudSpeechModel, _settings.CloudSpeechApiKey);
         OutputVoiceCombo.ItemsSource = _voice.InstalledItalianVoices;
         if (!string.IsNullOrWhiteSpace(_settings.OutputVoice) && _voice.InstalledItalianVoices.Contains(_settings.OutputVoice))
             OutputVoiceCombo.SelectedItem = _settings.OutputVoice;
@@ -400,7 +405,16 @@ public partial class MainWindow : Window
         _settings.SpeechRecognitionModelExplicit = true;
         _settings.Save();
         VoiceStatus.Text = "Cambio modello vocale in corso…";
-        _ = _voice.InitializeAsync(_settings.SpeechRecognitionModel);
+        _ = _voice.InitializeAsync(_settings.SpeechRecognitionModel, force: true);
+    }
+
+    private void RecheckVoice_Click(object sender, RoutedEventArgs e)
+    {
+        // Lets the engine be retried without restarting: useful right after the
+        // Windows speech consent or a cloud key is enabled.
+        SaveSettings_Click(sender, e);
+        VoiceStatus.Text = "Verifica del motore vocale…";
+        _ = _voice.InitializeAsync(_settings.SpeechRecognitionModel, force: true);
     }
 
     private void SpeechSpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -549,6 +563,10 @@ public partial class MainWindow : Window
             _settings.SpeechRecognitionModel = recognition.Tag as string ?? "turbo-q5";
             _settings.SpeechRecognitionModelExplicit = true;
         }
+        _settings.CloudSpeechEndpoint = CloudEndpointInput.Text.Trim();
+        _settings.CloudSpeechModel = CloudModelInput.Text.Trim();
+        _settings.CloudSpeechApiKey = CloudKeyInput.Password.Trim();
+        _voice.ConfigureCloud(_settings.CloudSpeechEndpoint, _settings.CloudSpeechModel, _settings.CloudSpeechApiKey);
         _settings.OutputVoice = OutputVoiceCombo.SelectedItem as string ?? _settings.OutputVoice;
         _settings.SpeechRatePercent = (int)Math.Round(SpeechSpeedSlider.Value);
         _settings.UseNaturalVoice = NaturalVoiceCheck.IsChecked == true;

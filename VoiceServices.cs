@@ -3,7 +3,9 @@ using System.IO.Compression;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using System.Media;
@@ -54,6 +56,12 @@ public sealed class VoiceService : IDisposable
     private TaskCompletionSource? _windowsStopped;
     private bool _windowsListening;
     private bool _useWindowsRecognition;
+    // Optional cloud speech service: audio is uploaded only after the player
+    // releases push-to-talk, so the GPU and CPU stay free while driving.
+    private bool _useCloudRecognition;
+    private string _cloudEndpoint = "https://api.openai.com/v1/audio/transcriptions";
+    private string _cloudModel = "gpt-4o-mini-transcribe";
+    private string _cloudKey = "";
     private Task? _naturalVoiceInitializing;
     private string? _piperExecutable;
     private string? _piperModel;
@@ -118,21 +126,49 @@ public sealed class VoiceService : IDisposable
         }
     }
 
-    public Task InitializeAsync(string recognitionModel = "turbo-q5")
+    public Task InitializeAsync(string recognitionModel = "turbo-q5", bool force = false)
     {
         lock (_captureGate)
         {
             recognitionModel = NormalizeRecognitionModel(recognitionModel);
-            if (recognitionModel == "windows" && _useWindowsRecognition && _windowsRecognizer is not null) return Task.CompletedTask;
-            if (recognitionModel != "windows" && _whisperProcessor is not null && _recognitionModel == recognitionModel) return Task.CompletedTask;
+            if (!force && recognitionModel == "windows" && _useWindowsRecognition && _windowsRecognizer is not null) return Task.CompletedTask;
+            if (!force && recognitionModel == "cloud" && _useCloudRecognition && _recognitionModel == "cloud") return Task.CompletedTask;
+            if (!force && recognitionModel != "windows" && recognitionModel != "cloud" && _whisperProcessor is not null && _recognitionModel == recognitionModel) return Task.CompletedTask;
             if (_initializing is { IsCompleted: false }) return _initializing;
             _recognitionModel = recognitionModel;
             return _initializing = InitializeCoreAsync(recognitionModel);
         }
     }
 
+    /// <summary>Endpoint, model and key of the optional cloud speech service.</summary>
+    public void ConfigureCloud(string endpoint, string? model, string? apiKey)
+    {
+        _cloudEndpoint = string.IsNullOrWhiteSpace(endpoint) ? "https://api.openai.com/v1/audio/transcriptions" : endpoint.Trim();
+        _cloudModel = string.IsNullOrWhiteSpace(model) ? "gpt-4o-mini-transcribe" : model.Trim();
+        _cloudKey = apiKey?.Trim() ?? "";
+    }
+
     private async Task InitializeCoreAsync(string recognitionModel)
     {
+        if (recognitionModel == "cloud")
+        {
+            if (!string.IsNullOrWhiteSpace(_cloudKey) && !string.IsNullOrWhiteSpace(_cloudEndpoint))
+            {
+                _useCloudRecognition = true;
+                _useWindowsRecognition = false;
+                _windowsRecognizer?.Dispose();
+                _windowsRecognizer = null;
+                _recognitionModel = "cloud";
+                SetStatus($"Riconoscimento cloud pronto · {_cloudModel} · audio inviato solo quando rilasci il PTT.");
+                return;
+            }
+
+            // No key yet: keep the microphone usable with the local engine.
+            _useCloudRecognition = false;
+            SetStatus("Riconoscimento cloud selezionato ma manca la chiave API: uso il motore locale.");
+            recognitionModel = "windows";
+        }
+
         if (recognitionModel == "windows")
         {
             var windowsInit = await TryInitializeWindowsRecognizerAsync().ConfigureAwait(false);
@@ -154,6 +190,7 @@ public sealed class VoiceService : IDisposable
         }
 
         _useWindowsRecognition = false;
+        _useCloudRecognition = false;
         try
         {
             _windowsRecognizer?.Dispose();
@@ -355,6 +392,7 @@ public sealed class VoiceService : IDisposable
     private static string NormalizeRecognitionModel(string value) => value.ToLowerInvariant() switch
     {
         "windows" or "system" => "windows",
+        "cloud" or "online" => "cloud",
         "tiny" => "tiny",
         "base" => "base",
         "turbo-q5" or "turbo" or "large-v3-turbo" => "turbo-q5",
@@ -369,7 +407,7 @@ public sealed class VoiceService : IDisposable
             return;
         }
 
-        if (_whisperProcessor is null)
+        if (_whisperProcessor is null && !_useCloudRecognition)
             throw new InvalidOperationException(Status.Contains("non pronto", StringComparison.OrdinalIgnoreCase)
                 ? Status : "Il modello vocale locale sta ancora caricando. Riprova tra poco.");
 
@@ -406,7 +444,9 @@ public sealed class VoiceService : IDisposable
             try
             {
                 capture.StartRecording();
-                SetStatus("Microfono aperto · Whisper locale in ascolto, tieni premuto per parlare.");
+                SetStatus(_useCloudRecognition
+                    ? "Microfono aperto · registrazione per il cloud, tieni premuto per parlare."
+                    : "Microfono aperto · Whisper locale in ascolto, tieni premuto per parlare.");
             }
             catch
             {
@@ -476,6 +516,12 @@ public sealed class VoiceService : IDisposable
             return;
         }
 
+        if (_useCloudRecognition)
+        {
+            await TranscribeCloudAsync(bytes, format).ConfigureAwait(false);
+            return;
+        }
+
         await _transcriptionGate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -501,6 +547,88 @@ public sealed class VoiceService : IDisposable
             Diagnostic?.Invoke($"Trascrizione locale non riuscita: {ex.Message}");
         }
         finally { _transcriptionGate.Release(); }
+    }
+
+    /// <summary>
+    /// Uploads the push-to-talk phrase to an OpenAI-compatible transcription
+    /// endpoint. Nothing is computed locally: the GPU and CPU stay with the game.
+    /// </summary>
+    private async Task TranscribeCloudAsync(byte[] audio, WaveFormat format)
+    {
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            SetStatus("Audio acquisito · riconoscimento cloud in corso…");
+            using var content = new MultipartFormDataContent();
+            var file = new ByteArrayContent(BuildWav(audio, format));
+            file.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+            content.Add(file, "file", "ptt.wav");
+            content.Add(new StringContent(_cloudModel), "model");
+            content.Add(new StringContent("it"), "language");
+            content.Add(new StringContent("radio di gara: gomme, carburante, danni, box, distacchi"), "prompt");
+            using var request = new HttpRequestMessage(HttpMethod.Post, _cloudEndpoint) { Content = content };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _cloudKey);
+            using var response = await Http.SendAsync(request).ConfigureAwait(false);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                Diagnostic?.Invoke($"Servizio cloud non disponibile ({(int)response.StatusCode}). Controlla chiave, modello e connessione.");
+                return;
+            }
+
+            using var json = JsonDocument.Parse(body);
+            var phrase = (json.RootElement.TryGetProperty("text", out var text) ? text.GetString() : null)?.Trim() ?? "";
+            timer.Stop();
+            if (phrase.Length == 0)
+            {
+                Diagnostic?.Invoke("Il servizio cloud non ha riconosciuto parole nell’audio.");
+                return;
+            }
+
+            SetStatus($"Riconosciuto dal cloud in {timer.Elapsed.TotalSeconds:0.0} s: «{phrase}»");
+            Recognized?.Invoke(phrase);
+        }
+        catch (Exception ex)
+        {
+            Diagnostic?.Invoke($"Riconoscimento cloud non riuscito: {ex.Message}");
+        }
+    }
+
+    /// <summary>16 kHz mono PCM: small upload, accepted by every speech API.</summary>
+    private static byte[] BuildWav(byte[] audio, WaveFormat sourceFormat)
+    {
+        using var sourceData = new MemoryStream(audio, writable: false);
+        using var source = new RawSourceWaveStream(sourceData, sourceFormat);
+        using var resampler = new MediaFoundationResampler(source, new WaveFormat(16000, 16, 1))
+        {
+            ResamplerQuality = 60
+        };
+        using var pcm = new MemoryStream();
+        var buffer = new byte[8192];
+        int read;
+        while ((read = resampler.Read(buffer, 0, buffer.Length)) > 0)
+            pcm.Write(buffer, 0, read);
+        var data = pcm.ToArray();
+
+        using var wav = new MemoryStream(44 + data.Length);
+        using (var writer = new BinaryWriter(wav, Encoding.ASCII, leaveOpen: true))
+        {
+            writer.Write("RIFF"u8.ToArray());
+            writer.Write(36 + data.Length);
+            writer.Write("WAVE"u8.ToArray());
+            writer.Write("fmt "u8.ToArray());
+            writer.Write(16);
+            writer.Write((short)1);
+            writer.Write((short)1);
+            writer.Write(16000);
+            writer.Write(32000);
+            writer.Write((short)2);
+            writer.Write((short)16);
+            writer.Write("data"u8.ToArray());
+            writer.Write(data.Length);
+            writer.Write(data);
+        }
+        return wav.ToArray();
     }
 
     private void StartWindowsListening()

@@ -26,6 +26,11 @@ public static class AppLanguage
         ["Verifica Ollama"] = "Check Ollama", ["Scarica modello"] = "Download model",
         ["Voce, radio e controller"] = "Voice, radio and controller", ["Riconoscimento vocale"] = "Speech recognition",
         ["Windows · riconoscimento vocale di sistema"] = "Windows · system speech recognition",
+        ["Cloud · riconoscimento online, nessun carico locale"] = "Cloud · online recognition, no local load",
+        ["Riconoscimento cloud · indirizzo API"] = "Cloud recognition · API address",
+        ["Modello cloud"] = "Cloud model",
+        ["Chiave API cloud (resta solo su questo PC)"] = "Cloud API key (kept on this PC only)",
+        ["Verifica motore vocale"] = "Check speech engine",
         ["Massima accuratezza · Whisper large-v3 turbo · 547 MB"] = "Maximum accuracy · Whisper large-v3 turbo · 547 MB",
         ["Bilanciato · Whisper base · 142 MB"] = "Balanced · Whisper base · 142 MB",
         ["Veloce · Whisper tiny · 77 MB"] = "Fast · Whisper tiny · 77 MB",
@@ -36,7 +41,7 @@ public static class AppLanguage
         ["Bip per frenata"] = "Braking beep", ["Bip per riapertura gas"] = "Throttle beep",
         ["Anticipo beep"] = "Beep advance", ["Lingua / Language"] = "Language",
         ["Dati letti dal gioco: velocità, carburante, giro, gomme, pit lane, penalità e bandiere."] = "Game data: speed, fuel, lap, tyres, pit lane, penalties and flags.",
-        ["Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; il riconoscimento usa il microfono predefinito di Windows senza inviare l’audio a un servizio cloud."] = "Push-to-talk: hold F8 or the Xbox Menu button. A beep at press and release confirms the key; recognition uses the default Windows microphone locally."
+        ["Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; i motori locale e Windows non inviano audio a servizi esterni, il motore cloud sì, e solo dopo il rilascio."] = "Push-to-talk: hold F8 or the Xbox Menu button. A beep at press and release confirms the key; the local and Windows engines keep audio on the PC, the cloud engine uploads it after release only."
     };
 
     public static string TranslateStatic(string text)

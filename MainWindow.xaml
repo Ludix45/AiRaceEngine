@@ -123,10 +123,18 @@
                         <TextBlock Text="Riconoscimento vocale" Foreground="{StaticResource Muted}"/>
                         <ComboBox x:Name="RecognitionModelCombo" Margin="0,4,0,10" SelectionChanged="RecognitionModel_Changed">
                             <ComboBoxItem Tag="windows">Windows · riconoscimento vocale di sistema</ComboBoxItem>
+                            <ComboBoxItem Tag="cloud">Cloud · riconoscimento online, nessun carico locale</ComboBoxItem>
                             <ComboBoxItem Tag="turbo-q5">Massima accuratezza · Whisper large-v3 turbo · 547 MB</ComboBoxItem>
                             <ComboBoxItem Tag="base">Bilanciato · Whisper base · 142 MB</ComboBoxItem>
                             <ComboBoxItem Tag="tiny">Veloce · Whisper tiny · 77 MB</ComboBoxItem>
                         </ComboBox>
+                        <TextBlock Text="Riconoscimento cloud · indirizzo API" Foreground="{StaticResource Muted}"/>
+                        <TextBox x:Name="CloudEndpointInput" Margin="0,4,0,8"/>
+                        <TextBlock Text="Modello cloud" Foreground="{StaticResource Muted}"/>
+                        <TextBox x:Name="CloudModelInput" Margin="0,4,0,8"/>
+                        <TextBlock Text="Chiave API cloud (resta solo su questo PC)" Foreground="{StaticResource Muted}"/>
+                        <PasswordBox x:Name="CloudKeyInput" Margin="0,4,0,10"/>
+                        <Button Content="Verifica motore vocale" Click="RecheckVoice_Click" HorizontalAlignment="Left" Margin="0,0,0,8"/>
                         <TextBlock Text="Voce dell’ingegnere" Foreground="{StaticResource Muted}"/>
                         <ComboBox x:Name="OutputVoiceCombo" Margin="0,4,0,10" SelectionChanged="OutputVoice_Changed"/>
                         <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -147,7 +155,7 @@
                             <TextBlock x:Name="CoachLeadText" Grid.Column="1" Foreground="{StaticResource Lime}"/>
                         </Grid>
                         <Slider x:Name="CoachLeadSlider" Minimum="0" Maximum="1000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="CoachLeadSlider_ValueChanged" Margin="0,0,0,12"/>
-                        <TextBlock Text="Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; il riconoscimento usa il microfono predefinito di Windows senza inviare l’audio a un servizio cloud." TextWrapping="Wrap"/>
+                        <TextBlock Text="Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; i motori locale e Windows non inviano audio a servizi esterni, il motore cloud sì, e solo dopo il rilascio." TextWrapping="Wrap"/>
                         <TextBlock x:Name="VoiceStatus" Text="Riconoscimento vocale italiano: verifica in corso…" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,12,0,0"/>
                         <TextBlock Text="Per visualizzare il pannello sopra AC, usa modalità finestra senza bordi. L’overlay non modifica i banner o le regole del gioco." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,18,0,0"/>
                     </StackPanel></ScrollViewer></Border>
