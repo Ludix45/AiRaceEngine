@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private int _lastLapRadio = -1;
     private bool _modelWarmed;
     private bool _lowPriority;
+    private bool _capturingPtt;
     private string _coachStatus = "Coach curva: avvia un giro pulito per imparare frenate e riapertura del gas.";
 
     public MainWindow()
@@ -79,7 +80,9 @@ public partial class MainWindow : Window
         _voice.ConfigureOutput(_settings.OutputVoice, _settings.SpeechRatePercent, _settings.UseNaturalVoice);
         OutputVoiceStatus.Text = _voice.OutputVoiceStatus;
         ModelFolderText.Text = $"Cartella modelli Ollama: {Environment.GetEnvironmentVariable("OLLAMA_MODELS") ?? @"%USERPROFILE%\.ollama\models"}";
-        _ptt.XboxEnabled = _settings.XboxMenuPushToTalk;
+        PttKeyInput.Text = PushToTalkBinding.Display(_settings.PushToTalkKey);
+        SelectPttController(_settings.PushToTalkControllerButton);
+        ApplyPushToTalk();
         VoiceStatus.Text = _voice.Status;
         _telemetry.Updated += OnTelemetryUpdated;
         _telemetry.RaceEventDetected += OnRaceEvent;
@@ -352,6 +355,69 @@ public partial class MainWindow : Window
     private void SetVoiceStatus(string text)
     {
         if (VoiceStatus.Text != text) VoiceStatus.Text = text;
+    }
+
+    private void SelectPttController(string? name)
+    {
+        var wanted = string.IsNullOrWhiteSpace(name) ? PushToTalkBinding.DefaultController : name.Trim();
+        foreach (var item in PttControllerCombo.Items.OfType<ComboBoxItem>())
+        {
+            if (string.Equals(item.Tag as string, wanted, StringComparison.OrdinalIgnoreCase))
+            {
+                PttControllerCombo.SelectedItem = item;
+                return;
+            }
+        }
+        PttControllerCombo.SelectedIndex = 0;
+    }
+
+    private void ApplyPushToTalk()
+    {
+        _ptt.Configure(_settings.PushToTalkKey, _settings.PushToTalkControllerButton);
+        var (mask, label) = PushToTalkBinding.Controller(_settings.PushToTalkControllerButton);
+        // A controller with no button selected keeps polling cost at zero.
+        _ptt.XboxEnabled = mask != 0 && _settings.XboxMenuPushToTalk;
+        PttStatusText.Text = $"PTT pronto · {PushToTalkBinding.Display(_settings.PushToTalkKey)} sulla tastiera · {label} sul controller.";
+    }
+
+    private void PttCapture_Click(object sender, RoutedEventArgs e)
+    {
+        _capturingPtt = true;
+        PttCaptureButton.Content = "Premi…";
+        PttStatusText.Text = "Premi la combinazione: tieni i modificatori (Ctrl, Shift, Alt) e il tasto finale. Esc annulla.";
+        PttKeyInput.Focus();
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_capturingPtt) return;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        e.Handled = true;
+        if (key == Key.Escape)
+        {
+            _capturingPtt = false;
+            ApplyPushToTalk();
+            return;
+        }
+        // Wait for a real key: a modifier alone is not a usable PTT trigger.
+        if (PushToTalkBinding.IsModifier(key)) return;
+        _capturingPtt = false;
+        _settings.PushToTalkKey = PushToTalkBinding.Compose(key, Keyboard.Modifiers);
+        _settings.Save();
+        PttKeyInput.Text = PushToTalkBinding.Display(_settings.PushToTalkKey);
+        ApplyPushToTalk();
+    }
+
+    private void PttController_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        if (PttControllerCombo.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        {
+            _settings.PushToTalkControllerButton = tag;
+            _settings.XboxMenuPushToTalk = tag != "none";
+            _settings.Save();
+            ApplyPushToTalk();
+        }
     }
 
     private void OnPushToTalkChanged(bool down, string source)

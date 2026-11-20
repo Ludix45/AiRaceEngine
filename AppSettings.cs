@@ -8,8 +8,11 @@ public sealed class AppSettings
     public string OllamaUrl { get; set; } = "http://localhost:11434";
     public string Model { get; set; } = "qwen2.5:3b";
     public bool ModelSelectionExplicit { get; set; }
+    /// <summary>Keyboard shortcut for PTT: a key or a combo such as "Ctrl+Shift+F8".</summary>
     public string PushToTalkKey { get; set; } = "F8";
     public bool XboxMenuPushToTalk { get; set; } = true;
+    /// <summary>Controller button for PTT: "menu", "view", "a", "b", "x", "y", "lb", "rb", "ls", "rs" or "none".</summary>
+    public string PushToTalkControllerButton { get; set; } = "menu";
     public bool SpeakReplies { get; set; } = true;
     public bool RaceEngineerEnabled { get; set; } = true;
     public bool AnnounceFuelEachLap { get; set; }

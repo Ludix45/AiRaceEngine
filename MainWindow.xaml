@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="AI Race Engineer" Height="790" Width="1260" MinHeight="670" MinWidth="1020"
         Background="#0D1115" Foreground="#EAF0F3" FontFamily="Segoe UI" WindowStartupLocation="CenterScreen"
-        Topmost="False">
+        Topmost="False" PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
         <SolidColorBrush x:Key="Panel" Color="#171D22" />
         <SolidColorBrush x:Key="Panel2" Color="#20272D" />
@@ -155,7 +155,27 @@
                             <TextBlock x:Name="CoachLeadText" Grid.Column="1" Foreground="{StaticResource Lime}"/>
                         </Grid>
                         <Slider x:Name="CoachLeadSlider" Minimum="0" Maximum="1000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="CoachLeadSlider_ValueChanged" Margin="0,0,0,12"/>
-                        <TextBlock Text="Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; i motori locale e Windows non inviano audio a servizi esterni, il motore cloud sì, e solo dopo il rilascio." TextWrapping="Wrap"/>
+                        <TextBlock Text="Push-to-talk · tasto della tastiera" Foreground="{StaticResource Muted}" Margin="0,0,0,4"/>
+                        <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBox x:Name="PttKeyInput" IsReadOnly="True" Height="36" VerticalContentAlignment="Center"/>
+                            <Button x:Name="PttCaptureButton" Grid.Column="1" Content="Premi…" Margin="8,0,0,0" Click="PttCapture_Click"/>
+                        </Grid>
+                        <TextBlock Text="Push-to-talk · pulsante del controller" Foreground="{StaticResource Muted}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="PttControllerCombo" Margin="0,0,0,8" SelectionChanged="PttController_Changed">
+                            <ComboBoxItem Tag="menu">Menu (tre linee)</ComboBoxItem>
+                            <ComboBoxItem Tag="view">View (due rettangoli)</ComboBoxItem>
+                            <ComboBoxItem Tag="a">A</ComboBoxItem>
+                            <ComboBoxItem Tag="b">B</ComboBoxItem>
+                            <ComboBoxItem Tag="x">X</ComboBoxItem>
+                            <ComboBoxItem Tag="y">Y</ComboBoxItem>
+                            <ComboBoxItem Tag="lb">LB</ComboBoxItem>
+                            <ComboBoxItem Tag="rb">RB</ComboBoxItem>
+                            <ComboBoxItem Tag="ls">Left stick (clic)</ComboBoxItem>
+                            <ComboBoxItem Tag="rs">Right stick (clic)</ComboBoxItem>
+                            <ComboBoxItem Tag="none">Nessuno</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock x:Name="PttStatusText" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <TextBlock Text="Push-to-talk: tieni premuto il tasto scelto (F8 predefinito) o il pulsante del controller selezionato. Un bip all’inizio e uno al rilascio confermano il tasto; i motori locale e Windows non inviano audio a servizi esterni, il motore cloud sì, e solo dopo il rilascio." TextWrapping="Wrap"/>
                         <TextBlock x:Name="VoiceStatus" Text="Riconoscimento vocale italiano: verifica in corso…" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,12,0,0"/>
                         <TextBlock Text="Per visualizzare il pannello sopra AC, usa modalità finestra senza bordi. L’overlay non modifica i banner o le regole del gioco." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,18,0,0"/>
                     </StackPanel></ScrollViewer></Border>

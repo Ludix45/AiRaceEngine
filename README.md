@@ -59,6 +59,18 @@ L’autenticazione GitHub non è inclusa nella repository. Crea sul sito GitHub 
 
 Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo il primo push, i commit su `main` avviano la build automatica.
 
+## Licenza e controllo dei segreti
+
+Il codice di questo progetto è distribuito con licenza **MIT** (vedi `LICENSE`). La libreria in `Vendor/AssettoCorsaSharedMemory` mantiene la propria licenza MIT e l’attribuzione dell’autore.
+
+La repository non contiene chiavi API né credenziali: la chiave cloud eventualmente inserita nelle impostazioni resta in `%APPDATA%\AiRaceEngineer\settings.json`, fuori dal controllo di versione. Un hook Git blocca i commit che aggiungono segreti (chiavi con prefisso noto, token JWT, chiavi private, file come `.env`, `.pem`, `settings.json`). Si installa una volta per clone:
+
+```powershell
+.\scripts\install-git-hooks.ps1
+```
+
+Lo script imposta `core.hooksPath` su `.githooks`; i pattern controllati sono in `.githooks/secret-patterns.txt`. Se un commit viene bloccato per un falso positivo, si può forzare consapevolmente con `git commit --no-verify`.
+
 ## Funzioni incluse
 
 - Lettura a bassa latenza dei blocchi Shared Memory di Assetto Corsa: dati fisici, giri, posizione, pit lane, penalità, bandiera, settore, DRS, ERS, KERS, freno motore, brake bias e stato gomme/freni. Il campo completo (nomi, posizioni, giri, spline, velocità, pit, input e tempi) viene aggiornato da una piccola app Python AC a 40 Hz; posizione, avversario davanti/dietro e distacco usano la classifica **real-time** anziché quella ufficiale aggiornata sul traguardo.
@@ -68,7 +80,7 @@ Puoi usare anche un URL SSH se la tua chiave è già registrata su GitHub. Dopo 
 - Stima carburante/usura e consiglio di pit stop.
 - Suggerimenti di assetto generici dal modello locale.
 - Registrazione CSV della telemetria in Documenti\AiRaceEngineer\Sessions.
-- Push-to-talk con F8 o pulsante Xbox Menu/Start su tutti gli slot XInput, con bip distinti alla pressione e al rilascio; l’audio viene acquisito dal microfono predefinito.
+- Push-to-talk personalizzabile nelle impostazioni: tasto o combinazione di tastiera (F8 predefinito, per esempio `Ctrl+Shift+F8`) e pulsante del controller Xbox su tutti gli slot XInput (Menu predefinito, oppure View, A/B/X/Y, LB/RB, clic degli stick o nessuno). Le due sorgenti restano attive insieme, con bip distinti alla pressione e al rilascio; l’audio viene acquisito dal microfono predefinito.
 - Riconoscimento vocale predefinito con il **motore vocale di Windows** (opzione **Windows · riconoscimento vocale di sistema**): usa `Windows.Media.SpeechRecognition`, lo stesso motore della dettatura di sistema, che riconosce l’italiano con i modelli neurali moderni ed è molto più preciso dei modelli Whisper piccoli sui comandi brevi. Richiede il pacchetto lingua **Riconoscimento vocale** per l’italiano, installabile da **Impostazioni → Data e ora e lingua → Lingua e area → Italiano → Opzioni lingua → Riconoscimento vocale** oppure da PowerShell amministratore con `Add-WindowsCapability -Online -Name "Language.Speech~~~it-IT~0.0.1.0"`. Con **Riconoscimento vocale online** attivo (Impostazioni → Privacy e sicurezza → Riconoscimento vocale) e rete disponibile la frase viene riconosciuta dal servizio cloud di Windows; senza rete, o con la funzione online disattivata, Windows usa da solo i modelli locali già installati, quindi il PTT continua a funzionare offline. Se il motore Windows non è disponibile l’app lo segnala e passa automaticamente a Whisper base locale (circa 142 MB, scaricato una sola volta): è il modello piccolo che resta sotto il secondo, mentre large-v3 turbo su processore richiede una decina di secondi. Restano selezionabili anche **Bilanciato** base (142 MB) e **Veloce** tiny (77 MB). Prima di trascrivere, la registrazione viene ritagliata dal silenzio e normalizzata per ridurre gli errori del microfono. La trascrizione locale gira **solo su CPU** e usa metà dei core logici (massimo 8): il motore locale non tocca la GPU, che resta interamente ad Assetto Corsa. Misurato su i7-12700F con una frase di 3,5 s: **tiny 0,4 s**, **base 1 s**, **large-v3 turbo 11–13 s**. Il runtime Vulkan (rimosso) era circa venti volte più rapido — 0,55 s per frase — ma portava la GPU al **99%** per tutta la frase facendo scendere il gioco sotto i 30 fps, quindi non è più incluso nella build. Il tempo di trascrizione compare nello stato accanto alla frase riconosciuta.
 - Coach curva che conserva il giro personale più veloce per auto e pista. Nelle impostazioni puoi attivare indipendentemente il bip di frenata e quello di riapertura gas, oppure disattivarli entrambi; l’anticipo è regolabile da **sul punto** a **1 secondo prima**.
 - Voce neurale italiana locale facoltativa: si scarica una volta insieme al motore Piper e viene salvata accanto ai modelli locali. Nelle impostazioni puoi scegliere anche una voce Windows e regolare la velocità fra 75% e 135%.

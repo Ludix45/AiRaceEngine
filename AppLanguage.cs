@@ -41,7 +41,15 @@ public static class AppLanguage
         ["Bip per frenata"] = "Braking beep", ["Bip per riapertura gas"] = "Throttle beep",
         ["Anticipo beep"] = "Beep advance", ["Lingua / Language"] = "Language",
         ["Dati letti dal gioco: velocità, carburante, giro, gomme, pit lane, penalità e bandiere."] = "Game data: speed, fuel, lap, tyres, pit lane, penalties and flags.",
-        ["Push-to-talk: tieni premuto F8 o il pulsante Menu (tre linee) del controller Xbox. Un bip all’inizio e uno al rilascio confermano il tasto; i motori locale e Windows non inviano audio a servizi esterni, il motore cloud sì, e solo dopo il rilascio."] = "Push-to-talk: hold F8 or the Xbox Menu button. A beep at press and release confirms the key; the local and Windows engines keep audio on the PC, the cloud engine uploads it after release only."
+        ["Push-to-talk: tieni premuto il tasto scelto (F8 predefinito) o il pulsante del controller selezionato. Un bip all’inizio e uno al rilascio confermano il tasto; i motori locale e Windows non inviano audio a servizi esterni, il motore cloud sì, e solo dopo il rilascio."] = "Push-to-talk: hold the key you chose (F8 by default) or the selected controller button. A beep at press and release confirms the trigger; the local and Windows engines keep audio on the PC, the cloud engine uploads it after release only.",
+        ["Push-to-talk · tasto della tastiera"] = "Push-to-talk · keyboard shortcut",
+        ["Push-to-talk · pulsante del controller"] = "Push-to-talk · controller button",
+        ["Premi…"] = "Press…",
+        ["Menu (tre linee)"] = "Menu (three lines)",
+        ["View (due rettangoli)"] = "View (two squares)",
+        ["Left stick (clic)"] = "Left stick (click)",
+        ["Right stick (clic)"] = "Right stick (click)",
+        ["Nessuno"] = "None"
     };
 
     public static string TranslateStatic(string text)

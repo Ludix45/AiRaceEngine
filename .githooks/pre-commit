@@ -1,0 +1,64 @@
+#!/bin/sh
+# Blocks a commit that would add credentials, API keys or private keys.
+# Install once per clone with: scripts/install-git-hooks.ps1
+# (it sets: git config core.hooksPath .githooks)
+# Deliberate bypass, for a false positive only: git commit --no-verify
+
+status=0
+
+root=$(git rev-parse --show-toplevel) || exit 0
+pattern_file="$root/.githooks/secret-patterns.txt"
+if [ ! -f "$pattern_file" ]; then
+    echo "pre-commit: manca $pattern_file, controllo segreti saltato." >&2
+    exit 0
+fi
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+# One loop, no pipes: a pipeline would run in a subshell and lose $status.
+old_ifs=$IFS
+IFS='
+'
+for file in $staged; do
+    [ -z "$file" ] && continue
+
+    # 1. Files that must never enter the repository.
+    case "$file" in
+        .env|*/.env|.env.*|*/.env.*|\
+        *.pem|*.key|*.pfx|*.p12|*.jks|*.keystore|\
+        id_rsa|id_rsa.*|id_ed25519|id_ed25519.*|\
+        .npmrc|.pypirc|*/settings.json|settings.json|\
+        *credentials*.json|*secret*.json|*secrets*.yml|*secrets*.yaml)
+            echo "BLOCCATO: file sensibile in staging -> $file" >&2
+            status=1
+            continue
+            ;;
+    esac
+
+    # 2. File contents. .githooks/ is skipped so the pattern list cannot flag itself.
+    case "$file" in
+        .githooks/*) continue ;;
+    esac
+    [ -f "$file" ] || continue
+    while IFS= read -r pattern; do
+        case "$pattern" in
+            ''|'#'*) continue ;;
+        esac
+        if grep -aqE -- "$pattern" "$file"; then
+            echo "BLOCCATO: $file sembra contenere un segreto" >&2
+            echo "  pattern: $pattern" >&2
+            status=1
+            break
+        fi
+    done < "$pattern_file"
+done
+IFS=$old_ifs
+
+if [ "$status" -ne 0 ]; then
+    echo "" >&2
+    echo "Commit annullato: togli il segreto e usa un placeholder." >&2
+    echo "Se e' un falso positivo: git commit --no-verify" >&2
+fi
+
+exit "$status"

@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
+using System.Windows.Input;
 using System.Media;
 using System.Speech.Synthesis;
 using System.Net.NetworkInformation;
@@ -1028,17 +1029,127 @@ public sealed class VoiceService : IDisposable
     }
 }
 
+/// <summary>Turns the push-to-talk choice stored in settings into polled keys and XInput bits.</summary>
+public static class PushToTalkBinding
+{
+    public const string DefaultKeyboard = "F8";
+    public const string DefaultController = "menu";
+
+    // XInput button masks; the Menu button also reports 0x0400 on some drivers.
+    private const ushort XboxMenu = 0x0010 | 0x0400;
+
+    private const int VkShift = 0x10;
+    private const int VkControl = 0x11;
+    private const int VkAlt = 0x12;
+    private const int VkLeftWindows = 0x5B;
+
+    /// <summary>Virtual-key codes of a stored combo such as "Ctrl+Shift+F8".</summary>
+    public static int[] ParseVirtualKeys(string? combo)
+    {
+        if (string.IsNullOrWhiteSpace(combo)) return Array.Empty<int>();
+        var keys = new List<int>();
+        foreach (var raw in combo.Split('+', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var token = raw.Trim();
+            if (token.Length == 0) continue;
+            switch (token.ToLowerInvariant())
+            {
+                case "ctrl":
+                case "control":
+                    keys.Add(VkControl);
+                    continue;
+                case "shift":
+                    keys.Add(VkShift);
+                    continue;
+                case "alt":
+                    keys.Add(VkAlt);
+                    continue;
+                case "win":
+                case "windows":
+                    keys.Add(VkLeftWindows);
+                    continue;
+            }
+            if (token.Length == 1 && char.IsDigit(token[0])) token = "D" + token;
+            else if (token.Length == 4 && token.StartsWith("Num", StringComparison.OrdinalIgnoreCase) && char.IsDigit(token[3]))
+                token = "NumPad" + token[3];
+            if (Enum.TryParse<Key>(token, true, out var key) && key != Key.None)
+            {
+                var virtualKey = KeyInterop.VirtualKeyFromKey(key);
+                if (virtualKey > 0) keys.Add(virtualKey);
+            }
+        }
+        return keys.Distinct().ToArray();
+    }
+
+    /// <summary>Human readable form of a stored combo, e.g. "Ctrl+D1" becomes "Ctrl+1".</summary>
+    public static string Display(string? combo)
+    {
+        if (string.IsNullOrWhiteSpace(combo) || ParseVirtualKeys(combo).Length == 0) return "nessun tasto";
+        var shown = combo.Split('+', StringSplitOptions.RemoveEmptyEntries).Select(part => part.Trim()).Select(token =>
+            token.Length == 2 && (token[0] == 'D' || token[0] == 'd') && char.IsDigit(token[1]) ? token[1].ToString()
+            : token.Length == 7 && token.StartsWith("NumPad", StringComparison.OrdinalIgnoreCase) ? "Num" + token[6]
+            : token);
+        return string.Join("+", shown);
+    }
+
+    /// <summary>Stored combo for a captured key plus the modifiers held with it.</summary>
+    public static string Compose(Key key, ModifierKeys modifiers)
+    {
+        var parts = new List<string>();
+        if ((modifiers & ModifierKeys.Control) != 0) parts.Add("Ctrl");
+        if ((modifiers & ModifierKeys.Shift) != 0) parts.Add("Shift");
+        if ((modifiers & ModifierKeys.Alt) != 0) parts.Add("Alt");
+        if ((modifiers & ModifierKeys.Windows) != 0) parts.Add("Win");
+        parts.Add(key.ToString());
+        return string.Join("+", parts);
+    }
+
+    public static bool IsModifier(Key key) => key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
+        or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin or Key.System or Key.None;
+
+    /// <summary>XInput mask and label for a stored button name.</summary>
+    public static (ushort Mask, string Label) Controller(string? name) => (name ?? "").Trim().ToLowerInvariant() switch
+    {
+        "none" => ((ushort)0, "nessun pulsante"),
+        "view" or "back" => ((ushort)0x0020, "Xbox View"),
+        "a" => ((ushort)0x1000, "Xbox A"),
+        "b" => ((ushort)0x2000, "Xbox B"),
+        "x" => ((ushort)0x4000, "Xbox X"),
+        "y" => ((ushort)0x8000, "Xbox Y"),
+        "lb" or "leftshoulder" => ((ushort)0x0100, "Xbox LB"),
+        "rb" or "rightshoulder" => ((ushort)0x0200, "Xbox RB"),
+        "ls" or "leftstick" => ((ushort)0x0040, "Xbox LS"),
+        "rs" or "rightstick" => ((ushort)0x0080, "Xbox RS"),
+        "dpadup" or "up" => ((ushort)0x0001, "Xbox D-pad su"),
+        "dpaddown" or "down" => ((ushort)0x0002, "Xbox D-pad giù"),
+        "dpadleft" or "left" => ((ushort)0x0004, "Xbox D-pad sinistra"),
+        "dpadright" or "right" => ((ushort)0x0008, "Xbox D-pad destra"),
+        _ => (XboxMenu, "Xbox Menu")
+    };
+}
+
 public sealed class PushToTalkService : IDisposable
 {
-    private const int VkF8 = 0x77;
-    private const ushort XboxStart = 0x0010;
-    private const ushort XboxGuide = 0x0400;
     private bool _wasDown;
     private readonly CancellationTokenSource _cts = new();
+    private volatile int[] _keyboardKeys = { 0x77 };
+    private volatile ushort _controllerMask = 0x0010 | 0x0400;
+    private volatile string _keyboardLabel = "F8";
+    private volatile string _controllerLabel = "Xbox Menu";
     public event Action<bool, string>? Changed;
     public bool XboxEnabled { get; set; } = true;
 
     public PushToTalkService() => _ = Task.Run(PollAsync);
+
+    /// <summary>Applies a stored keyboard combo and controller button; safe to call while polling.</summary>
+    public void Configure(string? keyboardCombo, string? controllerButton)
+    {
+        _keyboardKeys = PushToTalkBinding.ParseVirtualKeys(keyboardCombo);
+        _keyboardLabel = PushToTalkBinding.Display(keyboardCombo);
+        var (mask, label) = PushToTalkBinding.Controller(controllerButton);
+        _controllerMask = mask;
+        _controllerLabel = label;
+    }
 
     private async Task PollAsync()
     {
@@ -1047,17 +1158,28 @@ public sealed class PushToTalkService : IDisposable
             try
             {
                 var source = "";
-                var down = (GetAsyncKeyState(VkF8) & 0x8000) != 0;
-                if (down) source = "F8";
-                if (XboxEnabled)
+                var down = false;
+                var keys = _keyboardKeys;
+                if (keys.Length > 0)
+                {
+                    // Every key of the combo must be held, so a single F8 and a
+                    // Ctrl+Shift+F8 binding cannot fire each other.
+                    down = true;
+                    for (var i = 0; i < keys.Length; i++)
+                    {
+                        if ((GetAsyncKeyState(keys[i]) & 0x8000) == 0) { down = false; break; }
+                    }
+                    if (down) source = _keyboardLabel;
+                }
+                if (!down && XboxEnabled && _controllerMask != 0)
                 {
                     for (var user = 0; user < 4; user++)
                     {
                         if (XInputGetState(user, out var state) != 0) continue;
-                        if ((state.Gamepad.Buttons & (XboxStart | XboxGuide)) != 0)
+                        if ((state.Gamepad.Buttons & _controllerMask) != 0)
                         {
                             down = true;
-                            source = "Xbox Menu";
+                            source = _controllerLabel;
                             break;
                         }
                     }
