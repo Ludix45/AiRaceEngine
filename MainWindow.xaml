@@ -124,7 +124,7 @@
                         <ComboBox x:Name="RecognitionModelCombo" Margin="0,4,0,10" SelectionChanged="RecognitionModel_Changed">
                             <ComboBoxItem Tag="windows">Windows · riconoscimento vocale di sistema</ComboBoxItem>
                             <ComboBoxItem Tag="cloud">Cloud · riconoscimento online, nessun carico locale</ComboBoxItem>
-                            <ComboBoxItem Tag="turbo-q5">Massima accuratezza · Whisper large-v3 turbo · 547 MB</ComboBoxItem>
+                            <ComboBoxItem Tag="turbo-q5">Massima accuratezza · Whisper large-v3 turbo · 547 MB · lento in gara (~10 s su CPU)</ComboBoxItem>
                             <ComboBoxItem Tag="base">Bilanciato · Whisper base · 142 MB</ComboBoxItem>
                             <ComboBoxItem Tag="tiny">Veloce · Whisper tiny · 77 MB</ComboBoxItem>
                         </ComboBox>

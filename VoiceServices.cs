@@ -183,10 +183,12 @@ public sealed class VoiceService : IDisposable
 
             // The Windows speech language pack is optional. Fall back to the
             // local Whisper model instead of leaving the microphone unusable.
+            // The fallback is the small model: large-v3 turbo needs about ten
+            // seconds per phrase on the CPU, which is useless on the radio.
             _useWindowsRecognition = false;
-            recognitionModel = "turbo-q5";
+            recognitionModel = "base";
             _recognitionModel = recognitionModel;
-            SetStatus($"Riconoscimento Windows non disponibile ({windowsDetail}). Uso Whisper large-v3 turbo locale.");
+            SetStatus($"Riconoscimento Windows non disponibile ({windowsDetail}). Uso Whisper base locale su CPU: la GPU resta al gioco.");
         }
 
         _useWindowsRecognition = false;
@@ -204,16 +206,21 @@ public sealed class VoiceService : IDisposable
             _whisperFactory = WhisperFactory.FromPath(modelPath);
             _whisperProcessor = _whisperFactory.CreateBuilder()
                 .WithLanguage("it")
-                // Whisper pads every utterance to 30 s, so the encoder cost is
-                // fixed per phrase. Use every logical core on the CPU fallback:
-                // the library default uses far fewer and is ~50% slower.
-                .WithThreads(Math.Clamp(Environment.ProcessorCount, 4, 32))
+                // Half the logical cores: the small models still finish in about
+                // a second, and the game keeps the other cores and the whole GPU.
+                .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8))
                 .WithPrompt("Italiano. Radio di gara Assetto Corsa. Gomme, carburante, danni, box, pit stop, davanti, dietro, distacco, posizione, bandiere, sorpasso, curva, frenata, gas, strategia.")
                 .WithNoContext()
                 .WithSingleSegment()
                 .WithTemperature(0f)
                 .Build();
-            SetStatus($"Riconoscimento italiano pronto · locale, modello {recognitionModel}.");
+            var speed = recognitionModel switch
+            {
+                "tiny" => "molto veloce, circa 0,4 s",
+                "base" => "bilanciato, circa 1 s",
+                _ => "massima accuratezza ma circa 10 s su CPU: per la radio in gara conviene Windows o Cloud"
+            };
+            SetStatus($"Riconoscimento italiano pronto · locale su CPU, la GPU resta al gioco · modello {recognitionModel} ({speed}).");
         }
         catch (Exception ex)
         {

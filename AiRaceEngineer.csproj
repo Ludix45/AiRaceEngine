@@ -21,10 +21,10 @@
     <PackageReference Include="System.Speech" Version="10.0.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <!-- CPU-only runtime on purpose: with Vulkan the GPU went to 99% for the
+         whole phrase and Assetto Corsa dropped below 30 fps, so speech must
+         never compete with the game for the GPU. -->
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
-    <!-- GPU acceleration when a Vulkan driver is present; Whisper.net keeps the
-         CPU runtime as automatic fallback, so no machine loses the feature. -->
-    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
   </ItemGroup>
 
   <ItemGroup>
